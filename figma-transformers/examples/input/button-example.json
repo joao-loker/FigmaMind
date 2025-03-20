@@ -1,0 +1,30 @@
+{
+  "document": {
+    "id": "button123",
+    "name": "Main-Primary",
+    "type": "FRAME",
+    "boundVariables": {
+      "paddingLeft": {
+        "type": "VARIABLE_ALIAS",
+        "id": "var123"
+      },
+      "paddingRight": {
+        "type": "VARIABLE_ALIAS",
+        "id": "var456"
+      }
+    },
+    "children": [
+      {
+        "id": "icon789",
+        "name": "icon-arrow-right",
+        "type": "INSTANCE"
+      },
+      {
+        "id": "text456",
+        "name": "Button Text",
+        "type": "TEXT",
+        "characters": "Continuar"
+      }
+    ]
+  }
+} 

@@ -1,0 +1,31 @@
+{
+  "document": {
+    "id": "list123",
+    "name": "list-item",
+    "type": "FRAME",
+    "variableCollections": {
+      "spacing": {
+        "type": "VARIABLE_COLLECTION",
+        "id": "spacing123"
+      }
+    },
+    "children": [
+      {
+        "id": "icon123",
+        "name": "icon-notification",
+        "type": "INSTANCE"
+      },
+      {
+        "id": "text123",
+        "name": "Item Title",
+        "type": "TEXT",
+        "characters": "Notificações"
+      },
+      {
+        "id": "divider123",
+        "name": "divider",
+        "type": "RECTANGLE"
+      }
+    ]
+  }
+} 
