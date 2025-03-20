@@ -8,8 +8,9 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs-extra');
+const readline = require('readline');
 const figmaService = require('./src/services/figmaService');
-const { processData } = require('./src/processor/processor');
+const { processData } = require('./src/processor');
 require('dotenv').config();
 
 // Configuração de logging
@@ -52,152 +53,336 @@ const OUTPUT_DIR = path.resolve('examples/output');
 fs.ensureDirSync(OUTPUT_DIR);
 fs.ensureDirSync(ASSETS_DIR);
 
-// Inicializar app
-const app = express();
+// Verificar modo de execução (HTTP ou stdio)
+const USE_STDIO = process.env.MCP_USE_STDIO === 'true';
 
-// Middlewares
-app.use(express.json());
-app.use(cors());
+// Manipulador de solicitações JSON-RPC
+async function handleJsonRpcRequest(request) {
+  try {
+    const { id, method, params } = request;
+    
+    if (!id || !method) {
+      return { 
+        jsonrpc: "2.0", 
+        error: { code: -32600, message: "Invalid Request" }, 
+        id: id || null 
+      };
+    }
 
-// Usar morgan apenas se não estiver suprimindo logs
-if (!SUPPRESS_LOGS) {
-  app.use(morgan('dev'));
+    let result;
+    
+    // Manipular diferentes métodos
+    switch (method) {
+      case 'info':
+        try {
+          const mcpConfig = fs.readJsonSync(path.resolve('mcp.json'));
+          result = {
+            name: mcpConfig.name,
+            version: mcpConfig.version,
+            description: mcpConfig.description,
+            protocol_version: mcpConfig.protocol_version,
+            endpoints: Object.keys(mcpConfig.endpoints || {}).map(key => {
+              const endpoint = mcpConfig.endpoints[key];
+              return {
+                name: key,
+                path: endpoint.path,
+                method: endpoint.method,
+                description: endpoint.description
+              };
+            })
+          };
+        } catch (error) {
+          logger.error('Erro ao obter informações MCP:', error);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32603, message: "Erro ao obter informações do servidor MCP" },
+            id
+          };
+        }
+        break;
+        
+      case 'health':
+        // Verificar se o token do Figma está configurado
+        const token = process.env.FIGMA_TOKEN;
+        
+        if (!token) {
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32603, message: "FIGMA_TOKEN não configurado" },
+            id
+          };
+        }
+        
+        result = {
+          status: 'ok',
+          message: 'FigmaMind MCP operacional'
+        };
+        break;
+        
+      case 'transform':
+        const { figmaUrl } = params || {};
+        
+        if (!figmaUrl) {
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32602, message: "Missing figmaUrl parameter" },
+            id
+          };
+        }
+        
+        // Verificar token do Figma
+        if (!process.env.FIGMA_TOKEN) {
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32603, message: "FIGMA_TOKEN não configurado" },
+            id
+          };
+        }
+        
+        try {
+          // Buscar dados do Figma
+          logger.log(`Iniciando processamento de ${figmaUrl}`);
+          const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
+          
+          // Processar dados
+          const processed = await processData(figmaResult.data, figmaResult.fileKey);
+          
+          // Salvar dados brutos e processados
+          await fs.writeJson(
+            path.join(OUTPUT_DIR, 'figma-raw.json'), 
+            figmaResult.data, 
+            { spaces: 2 }
+          );
+          
+          await fs.writeJson(
+            path.join(OUTPUT_DIR, 'figma-processed.json'), 
+            processed, 
+            { spaces: 2 }
+          );
+          
+          result = {
+            success: true,
+            message: `Processados ${processed.componentsCount || processed.meta.totalComponents} componentes`,
+            source: figmaUrl,
+            data: processed
+          };
+        } catch (error) {
+          logger.error('Erro ao processar transformação:', error);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32603, message: error.message || "Internal server error" },
+            id
+          };
+        }
+        break;
+        
+      default:
+        return {
+          jsonrpc: "2.0",
+          error: { code: -32601, message: `Method '${method}' not found` },
+          id
+        };
+    }
+    
+    return {
+      jsonrpc: "2.0",
+      result,
+      id
+    };
+  } catch (error) {
+    logger.error('Erro ao processar solicitação JSON-RPC:', error);
+    return {
+      jsonrpc: "2.0",
+      error: { code: -32603, message: "Internal JSON-RPC error" },
+      id: request?.id || null
+    };
+  }
 }
 
-// MCP Info Endpoint
-app.get('/', (req, res) => {
-  try {
-    const mcpConfig = fs.readJsonSync(path.resolve('mcp.json'));
-    return res.json({
-      name: mcpConfig.name,
-      version: mcpConfig.version,
-      description: mcpConfig.description,
-      protocol_version: mcpConfig.protocol_version,
-      endpoints: Object.keys(mcpConfig.endpoints).map(key => {
-        const endpoint = mcpConfig.endpoints[key];
-        return {
-          name: key,
-          path: endpoint.path,
-          method: endpoint.method,
-          description: endpoint.description
-        };
-      })
-    });
-  } catch (error) {
-    logger.error('Erro ao obter informações MCP:', error);
-    return res.status(500).json({
-      error: 'Erro ao obter informações do servidor MCP'
-    });
-  }
-});
-
-// MCP Health Check Endpoint
-app.get('/health', (req, res) => {
-  // Verificar se o token do Figma está configurado
-  const token = process.env.FIGMA_TOKEN;
+// Iniciar modo stdio se necessário
+if (USE_STDIO) {
+  logger.log('Iniciando FigmaMind MCP no modo stdio...');
   
-  if (!token) {
-    return res.status(503).json({
-      status: 'error',
-      message: 'FIGMA_TOKEN não configurado'
-    });
-  }
-  
-  return res.json({
-    status: 'ok',
-    message: 'FigmaMind MCP operacional'
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
   });
-});
+  
+  rl.on('line', async (line) => {
+    try {
+      // Ignorar linhas vazias
+      if (!line.trim()) return;
+      
+      // Tentar analisar a entrada como JSON
+      const request = JSON.parse(line);
+      
+      // Processar a solicitação
+      const response = await handleJsonRpcRequest(request);
+      
+      // Enviar a resposta
+      console.log(JSON.stringify(response));
+    } catch (error) {
+      logger.error('Erro ao processar linha de entrada:', error);
+      
+      // Enviar resposta de erro para qualquer solicitação mal formada
+      console.log(JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32700, message: "Parse error" },
+        id: null
+      }));
+    }
+  });
+  
+  logger.log('FigmaMind MCP pronto para receber solicitações via stdin/stdout');
+} else {
+  // Inicializar app
+  const app = express();
 
-// MCP Transform Endpoint
-app.post('/transform', async (req, res) => {
-  try {
-    const { figmaUrl } = req.body;
-    
-    if (!figmaUrl) {
-      return res.status(400).json({
-        error: 'Missing figmaUrl parameter'
-      });
-    }
-    
-    // Verificar token do Figma
-    if (!process.env.FIGMA_TOKEN) {
-      return res.status(401).json({
-        error: 'FIGMA_TOKEN não configurado. Configure o token do Figma nas variáveis de ambiente.'
-      });
-    }
-    
-    // Buscar dados do Figma
-    logger.log(`Iniciando processamento de ${figmaUrl}`);
-    const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
-    
-    // Processar dados
-    const processed = await processData(figmaResult.data, figmaResult.fileKey);
-    
-    // Salvar dados brutos e processados
-    await fs.writeJson(
-      path.join(OUTPUT_DIR, 'figma-raw.json'), 
-      figmaResult.data, 
-      { spaces: 2 }
-    );
-    
-    await fs.writeJson(
-      path.join(OUTPUT_DIR, 'figma-processed.json'), 
-      processed, 
-      { spaces: 2 }
-    );
-    
-    // Responder com os dados processados
-    res.json({
-      success: true,
-      message: `Processados ${processed.componentsCount} componentes`,
-      source: figmaUrl,
-      data: processed
-    });
-  } catch (error) {
-    logger.error('Erro ao processar transformação:', error);
-    res.status(500).json({
-      error: error.message || 'Internal server error'
-    });
+  // Middlewares
+  app.use(express.json());
+  app.use(cors());
+
+  // Usar morgan apenas se não estiver suprimindo logs
+  if (!SUPPRESS_LOGS) {
+    app.use(morgan('dev'));
   }
-});
 
-// MCP Assets Endpoint
-app.get('/assets/:filename', (req, res) => {
-  try {
-    const filename = req.params.filename;
-    const filePath = path.join(ASSETS_DIR, filename);
+  // MCP Info Endpoint
+  app.get('/', (req, res) => {
+    try {
+      const mcpConfig = fs.readJsonSync(path.resolve('mcp.json'));
+      return res.json({
+        name: mcpConfig.name,
+        version: mcpConfig.version,
+        description: mcpConfig.description,
+        protocol_version: mcpConfig.protocol_version,
+        endpoints: Object.keys(mcpConfig.endpoints).map(key => {
+          const endpoint = mcpConfig.endpoints[key];
+          return {
+            name: key,
+            path: endpoint.path,
+            method: endpoint.method,
+            description: endpoint.description
+          };
+        })
+      });
+    } catch (error) {
+      logger.error('Erro ao obter informações MCP:', error);
+      return res.status(500).json({
+        error: 'Erro ao obter informações do servidor MCP'
+      });
+    }
+  });
+
+  // MCP Health Check Endpoint
+  app.get('/health', (req, res) => {
+    // Verificar se o token do Figma está configurado
+    const token = process.env.FIGMA_TOKEN;
     
-    // Verificar se o arquivo existe
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        error: 'Asset not found'
+    if (!token) {
+      return res.status(503).json({
+        status: 'error',
+        message: 'FIGMA_TOKEN não configurado'
       });
     }
     
-    // Determinar tipo de conteúdo com base na extensão
-    const ext = path.extname(filename).toLowerCase();
-    let contentType = 'application/octet-stream';
-    
-    if (ext === '.png') contentType = 'image/png';
-    else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
-    else if (ext === '.svg') contentType = 'image/svg+xml';
-    
-    // Enviar o arquivo
-    res.setHeader('Content-Type', contentType);
-    res.sendFile(filePath);
-  } catch (error) {
-    logger.error('Erro ao acessar asset:', error);
-    res.status(500).json({
-      error: error.message || 'Internal server error'
+    return res.json({
+      status: 'ok',
+      message: 'FigmaMind MCP operacional'
     });
-  }
-});
+  });
 
-// Iniciar servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  logger.log(`FigmaMind MCP iniciado na porta ${PORT}`);
-  logger.log(`Servidor disponível em http://localhost:${PORT}`);
-  logger.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename`);
-}); 
+  // MCP Transform Endpoint
+  app.post('/transform', async (req, res) => {
+    try {
+      const { figmaUrl } = req.body;
+      
+      if (!figmaUrl) {
+        return res.status(400).json({
+          error: 'Missing figmaUrl parameter'
+        });
+      }
+      
+      // Verificar token do Figma
+      if (!process.env.FIGMA_TOKEN) {
+        return res.status(401).json({
+          error: 'FIGMA_TOKEN não configurado. Configure o token do Figma nas variáveis de ambiente.'
+        });
+      }
+      
+      // Buscar dados do Figma
+      logger.log(`Iniciando processamento de ${figmaUrl}`);
+      const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
+      
+      // Processar dados
+      const processed = await processData(figmaResult.data, figmaResult.fileKey);
+      
+      // Salvar dados brutos e processados
+      await fs.writeJson(
+        path.join(OUTPUT_DIR, 'figma-raw.json'), 
+        figmaResult.data, 
+        { spaces: 2 }
+      );
+      
+      await fs.writeJson(
+        path.join(OUTPUT_DIR, 'figma-processed.json'), 
+        processed, 
+        { spaces: 2 }
+      );
+      
+      // Responder com os dados processados
+      res.json({
+        success: true,
+        message: `Processados ${processed.componentsCount} componentes`,
+        source: figmaUrl,
+        data: processed
+      });
+    } catch (error) {
+      logger.error('Erro ao processar transformação:', error);
+      res.status(500).json({
+        error: error.message || 'Internal server error'
+      });
+    }
+  });
+
+  // MCP Assets Endpoint
+  app.get('/assets/:filename', (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const filePath = path.join(ASSETS_DIR, filename);
+      
+      // Verificar se o arquivo existe
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({
+          error: 'Asset not found'
+        });
+      }
+      
+      // Determinar tipo de conteúdo com base na extensão
+      const ext = path.extname(filename).toLowerCase();
+      let contentType = 'application/octet-stream';
+      
+      if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+      else if (ext === '.svg') contentType = 'image/svg+xml';
+      
+      // Enviar o arquivo
+      res.setHeader('Content-Type', contentType);
+      res.sendFile(filePath);
+    } catch (error) {
+      logger.error('Erro ao acessar asset:', error);
+      res.status(500).json({
+        error: error.message || 'Internal server error'
+      });
+    }
+  });
+
+  // Iniciar servidor
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    logger.log(`FigmaMind MCP iniciado na porta ${PORT}`);
+    logger.log(`Servidor disponível em http://localhost:${PORT}`);
+    logger.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename`);
+  });
+} 
