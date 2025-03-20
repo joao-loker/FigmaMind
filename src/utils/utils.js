@@ -224,6 +224,128 @@ function figmaColorToCss(color, opacity = 1) {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
+/**
+ * Extrai componentes recursivamente de um documento do Figma
+ * 
+ * @param {Object} node - Nó do documento Figma
+ * @param {Array} result - Array de componentes encontrados
+ * @returns {Array} - Array de componentes encontrados
+ */
+function extractComponents(node, result = []) {
+  if (!node) return result;
+  
+  // Adicionar o nó atual se for um componente visível
+  if (isValidComponent(node) && node.visible !== false) {
+    // Verificar se é um componente de alto nível importante
+    // Buscar componentes de maior importância (COMPONENT, INSTANCE, FRAME nomeado)
+    const isHighLevelComponent = 
+      node.type === 'COMPONENT' || 
+      node.type === 'INSTANCE' || 
+      (node.type === 'FRAME' && node.name && node.name.match(/button|header|card|input|icon|modal|menu|nav|footer/i));
+    
+    if (isHighLevelComponent) {
+      result.push(node);
+      
+      // Para componentes de alto nível, podemos pular a análise dos filhos para evitar duplicações
+      // mas ainda processar filhos para componentes específicos que podem ter sub-componentes importantes
+      if (shouldProcessChildren(node)) {
+        if (node.children && Array.isArray(node.children)) {
+          for (const child of node.children) {
+            extractComponents(child, result);
+          }
+        }
+      }
+    } else {
+      // Para outros tipos, verificar se são de interesse individual
+      if (node.type === 'TEXT' || node.type === 'VECTOR') {
+        result.push(node);
+      }
+      
+      // Continuar processando filhos para encontrar componentes importantes
+      if (node.children && Array.isArray(node.children)) {
+        for (const child of node.children) {
+          extractComponents(child, result);
+        }
+      }
+    }
+  } else {
+    // Mesmo que o nó atual não seja válido, processar filhos
+    if (node.children && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        extractComponents(child, result);
+      }
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Determina se devemos processar os filhos de um componente
+ * 
+ * @param {Object} node - Componente a verificar
+ * @returns {boolean} - true se deve processar filhos
+ */
+function shouldProcessChildren(node) {
+  if (!node || !node.name) return true;
+  
+  // Pular processamento de filhos para certos componentes para evitar duplicações
+  if ((node.type === 'COMPONENT' || node.type === 'INSTANCE') && 
+      node.name.match(/button|icon|input/i)) {
+    return false;
+  }
+  
+  // Para frames e grupos maiores, sempre processar filhos
+  if (node.type === 'FRAME' || node.type === 'GROUP') {
+    return true;
+  }
+  
+  // Para instances, verificar se é um container que pode ter componentes importantes dentro
+  if (node.type === 'INSTANCE' && node.name.match(/container|section|layout|grid/i)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Verifica se um nó é um componente válido para processamento
+ * 
+ * @param {Object} node - Nó a ser verificado
+ * @returns {boolean} - true se for um componente válido
+ */
+function isValidComponent(node) {
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  
+  // Verificar se tem propriedades mínimas
+  if (!node.id || !node.type) {
+    return false;
+  }
+  
+  // Ignorar nós ocultos
+  if (node.visible === false) {
+    return false;
+  }
+  
+  // Verificar tipos válidos para componentes
+  const validTypes = ['COMPONENT', 'INSTANCE', 'FRAME', 'GROUP', 'TEXT', 'VECTOR'];
+  if (!validTypes.includes(node.type)) {
+    return false;
+  }
+  
+  // Verificar tamanho mínimo (ignorar componentes muito pequenos)
+  if (node.absoluteBoundingBox) {
+    const { width, height } = node.absoluteBoundingBox;
+    if (width < 1 || height < 1) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
 module.exports = {
   removeVariableNodes,
   safeFileName,
@@ -234,5 +356,8 @@ module.exports = {
   extractComponentId,
   extractComponentVariant,
   formatObject,
-  figmaColorToCss
+  figmaColorToCss,
+  extractComponents,
+  isValidComponent,
+  shouldProcessChildren
 }; 

@@ -1,5 +1,5 @@
 /**
- * API REST para FigmaMind
+ * Aplicação principal do servidor
  */
 
 const express = require('express');
@@ -7,8 +7,9 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs-extra');
-const figmaService = require('./services/figmaService');
-const { processData } = require('./processor/processor');
+const figmaService = require('./figmaService');
+const { processData } = require('./processor');
+const { registerComponentTransformer, getRegisteredComponentTypes } = require('./transformers');
 require('dotenv').config();
 
 // Constantes
@@ -115,6 +116,125 @@ app.get('/api/assets/:filename', (req, res) => {
     res.status(500).json({
       error: error.message || 'Internal server error'
     });
+  }
+});
+
+// Endpoint para buscar dados do Figma
+app.post('/api/fetch-figma', async (req, res) => {
+  try {
+    const { fileUrl } = req.body;
+    
+    if (!fileUrl) {
+      return res.status(400).json({ error: 'URL do arquivo Figma é necessária' });
+    }
+    
+    console.log(`Buscando dados do Figma para: ${fileUrl}`);
+    
+    const figmaData = await figmaService.fetchFigmaFile(fileUrl);
+    
+    if (!figmaData) {
+      return res.status(500).json({ error: 'Falha ao obter dados do Figma' });
+    }
+    
+    return res.json({ success: true, data: figmaData });
+  } catch (error) {
+    console.error('Erro ao buscar dados do Figma:', error);
+    return res.status(500).json({ error: error.message || 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint para processar dados do Figma
+app.post('/api/process-figma', async (req, res) => {
+  try {
+    const { figmaData, options } = req.body;
+    
+    if (!figmaData) {
+      return res.status(400).json({ error: 'Dados do Figma são necessários' });
+    }
+    
+    console.log('Processando dados do Figma recebidos');
+    
+    const processedData = processData(figmaData, options || {});
+    
+    return res.json({ success: true, data: processedData });
+  } catch (error) {
+    console.error('Erro ao processar dados do Figma:', error);
+    return res.status(500).json({ error: error.message || 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint para buscar e processar dados do Figma em uma única requisição
+app.post('/api/fetch-and-process', async (req, res) => {
+  try {
+    const { fileUrl, options } = req.body;
+    
+    if (!fileUrl) {
+      return res.status(400).json({ error: 'URL do arquivo Figma é necessária' });
+    }
+    
+    console.log(`Buscando e processando dados do Figma para: ${fileUrl}`);
+    
+    const figmaData = await figmaService.fetchFigmaFile(fileUrl);
+    
+    if (!figmaData) {
+      return res.status(500).json({ error: 'Falha ao obter dados do Figma' });
+    }
+    
+    const processedData = processData(figmaData, options || {});
+    
+    return res.json({ success: true, data: processedData });
+  } catch (error) {
+    console.error('Erro ao buscar e processar dados do Figma:', error);
+    return res.status(500).json({ error: error.message || 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint para registrar um transformador personalizado
+app.post('/api/register-transformer', (req, res) => {
+  try {
+    const { type, transformer } = req.body;
+    
+    if (!type || typeof type !== 'string') {
+      return res.status(400).json({ error: 'Tipo de componente é necessário' });
+    }
+    
+    if (!transformer || typeof transformer !== 'string') {
+      return res.status(400).json({ error: 'Código do transformador é necessário como string' });
+    }
+    
+    // Converter a string de código para função usando Function constructor
+    // Isso permite que o cliente envie o código do transformador como string
+    try {
+      const transformerFunction = new Function('component', 'options', transformer);
+      
+      // Registrar o transformador
+      registerComponentTransformer(type, transformerFunction);
+      
+      console.log(`Transformador personalizado registrado para o tipo: ${type}`);
+      
+      return res.json({ 
+        success: true, 
+        message: `Transformador registrado para o tipo: ${type}`,
+        registeredTypes: getRegisteredComponentTypes()
+      });
+    } catch (evalError) {
+      console.error('Erro ao avaliar código do transformador:', evalError);
+      return res.status(400).json({ error: `Código de transformador inválido: ${evalError.message}` });
+    }
+  } catch (error) {
+    console.error('Erro ao registrar transformador:', error);
+    return res.status(500).json({ error: error.message || 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint para obter tipos de componentes registrados
+app.get('/api/component-types', (req, res) => {
+  try {
+    const registeredTypes = getRegisteredComponentTypes();
+    return res.json({ success: true, types: registeredTypes });
+  } catch (error) {
+    console.error('Erro ao obter tipos de componentes:', error);
+    return res.status(500).json({ error: error.message || 'Erro interno do servidor' });
   }
 });
 
