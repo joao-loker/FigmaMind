@@ -1,13 +1,14 @@
 {
-  "name": "figma-transformers",
+  "name": "figma-transformer-mcp",
   "version": "1.0.0",
-  "description": "Transforma e padroniza componentes do Figma para formatos específicos",
-  "main": "dist/index.js",
+  "description": "MCP server para extrair e transformar componentes do Figma em formato JSON padronizado",
+  "main": "mcp-server.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "test": "jest",
-    "start": "ts-node src/server/index.ts",
+    "start": "node mcp-server.js",
+    "start:dev": "nodemon mcp-server.js",
     "process": "ts-node scripts/process.ts",
     "fetch-figma": "ts-node scripts/fetch-figma.ts",
     "dev": "nodemon --watch \"src/**/*.ts\" --exec \"ts-node\" src/server/index.ts"
@@ -35,7 +36,23 @@
   "directories": {
     "example": "examples"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "keywords": [
+    "figma",
+    "design-system",
+    "ui-components",
+    "json-transformer",
+    "mcp",
+    "model-context-protocol",
+    "smithery"
+  ],
+  "author": "João Pereira",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joao-loker/DS-json-organize"
+  },
+  "homepage": "https://github.com/joao-loker/DS-json-organize#readme",
+  "bugs": {
+    "url": "https://github.com/joao-loker/DS-json-organize/issues"
+  }
 }

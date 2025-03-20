@@ -1,0 +1,22 @@
+# Definir comportamento padrão para normalização de linha
+* text=auto
+
+# Arquivos de configuração
+*.json text
+*.js text
+*.ts text
+*.md text
+*.yml text
+*.yaml text
+.env.example text
+
+# Ignorar diferenças em espaços em branco no final da linha
+*.md whitespace=trailing-space,space-before-tab,tab-in-indent,cr-at-eol
+
+# Tratar esses arquivos como binários
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary 

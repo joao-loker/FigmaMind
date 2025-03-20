@@ -2,14 +2,28 @@
 
 Um sistema para extrair componentes do Figma e transformá-los em formato JSON padronizado que facilita a reconstrução de interfaces por IA.
 
+**[NOVO]**: Agora disponível como servidor MCP (Model Context Protocol) para integração direta com LLMs!
+
 ## Sobre o Projeto
 
 Este projeto permite extrair componentes do Figma através da API oficial e transformá-los em um formato JSON padronizado que pode ser facilmente consumido por aplicações e sistemas de IA para reconstrução de interfaces. O sistema é composto por um extrator, um processador, transformadores específicos para cada tipo de componente e uma API REST para acesso aos serviços.
 
 **Novidades**: 
+- **Suporte MCP**: Agora compatível com o Model Context Protocol para integração direta com LLMs
 - Novo formato de JSON com componentes organizados em seções e posicionamento normalizado
 - Suporte para dimensões relativas e alinhamento de componentes
 - Identificação automática de áreas lógicas da interface
+
+## Uso como servidor MCP
+
+O Model Context Protocol (MCP) permite que o Figma Component Transformer seja facilmente integrado a modelos de linguagem grandes (LLMs) como uma ferramenta que fornece contexto estruturado.
+
+```bash
+# Iniciar como servidor MCP
+node mcp-server.js
+```
+
+Para mais detalhes sobre o MCP, consulte [README-MCP.md](README-MCP.md) e [smithery.md](smithery.md).
 
 ## Estrutura do Projeto
 
@@ -44,6 +58,10 @@ figma-transformers/
 │   ├── technical-details.md        # Detalhes técnicos (consolidado)
 │   ├── component-types.md          # Documentação de tipos de componentes
 │   └── figma-api-limitations.md    # Limitações da API Figma e soluções
+├── mcp-server.js                   # Servidor MCP (Model Context Protocol)
+├── mcp.json                        # Configuração do protocolo MCP
+├── README-MCP.md                   # Documentação específica do MCP
+├── smithery.md                     # Informações para publicação no Smithery
 ├── .env.example                    # Exemplo de configuração de variáveis de ambiente
 ├── package.json
 └── guia-rapido.md                  # Guia rápido para iniciantes
@@ -90,6 +108,24 @@ figma-transformers/
 
 ## Uso
 
+### Como API REST
+
+```bash
+# Iniciar o servidor API
+node src/index.js
+```
+
+O servidor API será iniciado na porta 3000 por padrão. Você pode acessar a API em `http://localhost:3000/api`.
+
+### Como Servidor MCP
+
+```bash
+# Iniciar como servidor MCP
+node mcp-server.js
+```
+
+O servidor MCP estará disponível em `http://localhost:3000`. Para mais detalhes, consulte [README-MCP.md](README-MCP.md).
+
 ### Extraindo Componentes do Figma
 
 ```bash
@@ -98,20 +134,25 @@ node scripts/fetch-figma.js https://www.figma.com/design/seu_arquivo_figma
 
 Este comando extrai os componentes do arquivo do Figma especificado e salva tanto os dados brutos quanto os processados em `examples/output/`. O sistema agora organiza automaticamente os componentes em seções lógicas e normaliza suas posições para facilitar a reconstrução por IA.
 
-### Iniciando o Servidor API
-
-```bash
-node src/index.js
-```
-
-O servidor API será iniciado na porta 3000 por padrão. Você pode acessar a API em `http://localhost:3000/api`.
-
-### Endpoints da API
+### Endpoints da API REST
 
 - `GET /api`: Retorna informações sobre a API
 - `POST /api/transform`: Transforma componentes do Figma
   - Corpo da requisição: `{ "figmaUrl": "https://www.figma.com/design/seu_arquivo_figma" }`
 - `GET /api/assets/:filename`: Acessa assets extraídos (imagens e ícones)
+
+### Endpoints MCP
+
+- `GET /`: Informações sobre o servidor MCP
+- `GET /health`: Verifica o status do servidor
+- `POST /transform`: Transforma componentes do Figma (endpoint principal)
+- `GET /assets/:filename`: Acessa assets extraídos
+
+## Publicação no Smithery
+
+O [Smithery](https://smithery.ai/) é uma plataforma para descobrir, compartilhar e executar servidores MCP. Você pode publicar este servidor no Smithery para que outras pessoas possam utilizá-lo com seus agentes de IA.
+
+Para mais detalhes sobre como publicar este projeto no Smithery, consulte o arquivo [smithery.md](smithery.md).
 
 ## Novo Formato JSON
 
@@ -161,6 +202,8 @@ A documentação do projeto foi reorganizada para maior clareza:
 - **docs/technical-details.md**: Documentação técnica detalhada (consolidada a partir de arquivos anteriores)
 - **docs/component-types.md**: Documentação específica para cada tipo de componente
 - **docs/assets-extraction.md**: Guia para extração e uso de assets
+- **README-MCP.md**: Documentação específica para uso como servidor MCP
+- **smithery.md**: Instruções para publicação no Smithery
 
 ## Componentes Suportados
 
@@ -238,4 +281,4 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo LICENSE para d
 
 ## Autor
 
-Your Name - [@seu-usuario](https://github.com/seu-usuario) 
+João Pereira - [@joao-loker](https://github.com/joao-loker) 

@@ -1,0 +1,65 @@
+{
+  "name": "figma-transformer-mcp",
+  "version": "1.0.0",
+  "description": "MCP server para extrair e transformar componentes do Figma em formato JSON padronizado",
+  "repository": "https://github.com/joao-loker/DS-json-organize",
+  "protocol_version": "0.3",
+  "main": "mcp-server.js",
+  "author": "João Pereira",
+  "license": "MIT",
+  "tags": ["figma", "design-system", "ui-components", "json-transformer"],
+  "metadata": {
+    "smithery": {
+      "icon": "🎨",
+      "category": "design"
+    }
+  },
+  "commands": {
+    "start": "node mcp-server.js"
+  },
+  "env": {
+    "required": ["FIGMA_TOKEN"],
+    "optional": ["PORT"]
+  },
+  "endpoints": {
+    "default": {
+      "path": "/transform",
+      "method": "POST",
+      "description": "Transforma componentes do Figma em formato JSON padronizado",
+      "request_schema": {
+        "type": "object",
+        "required": ["figmaUrl"],
+        "properties": {
+          "figmaUrl": {
+            "type": "string",
+            "description": "URL do arquivo do Figma para processar",
+            "example": "https://www.figma.com/design/Mlgjf3cCMzOIwM27GLx81Y/New-Onboarding?node-id=2045-33564"
+          }
+        }
+      },
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "assets": {
+      "path": "/assets/:filename",
+      "method": "GET",
+      "description": "Acessa assets extraídos do Figma",
+      "response_content_type": "image/*"
+    }
+  }
+} 
