@@ -1,17 +1,21 @@
-name: figmamind
-description: FigmaMind - Transformador de componentes Figma para formato padronizado
-version: 1.0.0
-
-service:
-  type: jsonrpc
-  url: http://localhost:3000/jsonrpc
+# Smithery configuration file
+startCommand:
+  type: stdio
   configSchema:
     type: object
-    required: ["figmaToken"]
+    required:
+      - figmaToken
     properties:
       figmaToken:
         type: string
-        description: "Token de acesso à API do Figma"
-
-build:
-  dockerfile: Dockerfile 
+        description: Token de acesso à API do Figma
+  commandFunction: |
+    (config) => ({
+      command: "node",
+      args: ["mcp-server.js"],
+      env: {
+        FIGMA_TOKEN: config.figmaToken,
+        MCP_SUPPRESS_LOGS: "true",
+        MCP_USE_STDIO: "true"
+      }
+    }) 
