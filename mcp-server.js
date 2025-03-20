@@ -1,6 +1,6 @@
 /**
- * MCP Server para Figma Component Transformer
- * Este arquivo implementa o Model Context Protocol para o Figma Component Transformer
+ * MCP Server para FigmaMind
+ * Este arquivo implementa o Model Context Protocol para o FigmaMind
  */
 
 const express = require('express');
@@ -69,7 +69,7 @@ app.get('/health', (req, res) => {
   
   return res.json({
     status: 'ok',
-    message: 'Servidor MCP operacional'
+    message: 'FigmaMind MCP operacional'
   });
 });
 
@@ -161,7 +161,7 @@ app.get('/assets/:filename', (req, res) => {
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`MCP Server iniciado na porta ${PORT}`);
+  console.log(`FigmaMind MCP iniciado na porta ${PORT}`);
   console.log(`Servidor disponível em http://localhost:${PORT}`);
   console.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename`);
 }); 

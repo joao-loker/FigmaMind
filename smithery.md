@@ -1,10 +1,10 @@
-# Figma Component Transformer - Smithery MCP
+# FigmaMind - Conectando o design à mente dos LLMs
 
-![Figma Component Transformer](https://placehold.co/600x400?text=Figma+Component+Transformer&font=montserrat)
+![FigmaMind](https://placehold.co/600x400?text=FigmaMind&font=montserrat)
 
 ## Descrição
 
-Este MCP transforma componentes do Figma em um formato JSON padronizado e otimizado para reconstrução de interfaces por Inteligência Artificial. Ele extrai layouts, componentes, estilos e propriedades visuais diretamente da API do Figma, organizando-os em uma estrutura consistente e fácil de consumir.
+O FigmaMind é um MCP que transforma componentes do Figma em um formato JSON padronizado e otimizado para reconstrução de interfaces por Inteligência Artificial. Ele extrai layouts, componentes, estilos e propriedades visuais diretamente da API do Figma, organizando-os em uma estrutura consistente e fácil de consumir.
 
 ## Casos de Uso
 
@@ -32,7 +32,7 @@ No Smithery, configure a variável de ambiente `FIGMA_TOKEN` com seu token de AP
 
 ```javascript
 // Exemplo de uso com o cliente Smithery
-const response = await smithery.invoke("figma-transformer-mcp", {
+const response = await smithery.invoke("figmamind", {
   figmaUrl: "https://www.figma.com/design/Mlgjf3cCMzOIwM27GLx81Y/New-Onboarding?node-id=2045-33564"
 });
 
@@ -81,7 +81,7 @@ console.log(`Processados ${response.data.componentsCount} componentes`);
 
 ```javascript
 // Para acessar imagens e ícones extraídos
-const imageUrl = `${smithery.getBaseUrl("figma-transformer-mcp")}/assets/component-123.svg`;
+const imageUrl = `${smithery.getBaseUrl("figmamind")}/assets/component-123.svg`;
 ```
 
 ## Detalhes Técnicos
@@ -110,4 +110,4 @@ Este MCP requer acesso à API do Figma através de um token pessoal. O token é 
 
 ## Manutenção e Suporte
 
-Este MCP é mantido ativamente. Para relatar problemas ou solicitar novas funcionalidades, visite o [repositório GitHub](https://github.com/joao-loker/DS-json-organize/issues). 
+Este MCP é mantido ativamente. Para relatar problemas ou solicitar novas funcionalidades, visite o [repositório GitHub](https://github.com/joao-loker/FigmaMind/issues). 

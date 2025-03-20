@@ -1,16 +1,16 @@
 {
-  "name": "figma-transformer-mcp",
+  "name": "figmamind",
   "version": "1.0.0",
-  "description": "MCP server para extrair e transformar componentes do Figma em formato JSON padronizado",
-  "repository": "https://github.com/joao-loker/DS-json-organize",
+  "description": "MCP server que transforma componentes do Figma em formato JSON padronizado para reconstrução por IA",
+  "repository": "https://github.com/joao-loker/FigmaMind",
   "protocol_version": "0.3",
   "main": "mcp-server.js",
   "author": "João Pereira",
   "license": "MIT",
-  "tags": ["figma", "design-system", "ui-components", "json-transformer"],
+  "tags": ["figma", "design-system", "ui-components", "json-transformer", "figmamind"],
   "metadata": {
     "smithery": {
-      "icon": "🎨",
+      "icon": "🧠",
       "category": "design"
     }
   },

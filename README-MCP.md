@@ -1,6 +1,6 @@
-# MCP: Figma Component Transformer
+# FigmaMind - MCP
 
-Este é um servidor MCP (Model Context Protocol) que transforma componentes do Figma em um formato JSON padronizado, facilitando a reconstrução de interfaces por sistemas de IA.
+O FigmaMind é um servidor MCP (Model Context Protocol) que transforma componentes do Figma em um formato JSON padronizado, facilitando a reconstrução de interfaces por sistemas de IA.
 
 ## O que é MCP?
 
@@ -25,8 +25,8 @@ Este servidor MCP fornece:
 
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/joao-loker/DS-json-organize.git
-   cd DS-json-organize
+   git clone https://github.com/joao-loker/FigmaMind.git
+   cd FigmaMind
    ```
 
 2. Instale as dependências:

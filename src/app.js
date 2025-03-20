@@ -1,5 +1,5 @@
 /**
- * API REST para Figma Component Transformer
+ * API REST para FigmaMind
  */
 
 const express = require('express');
@@ -30,7 +30,7 @@ app.use(morgan('dev'));
 // Rota raiz da API
 app.get('/api', (req, res) => {
   res.json({
-    name: 'MCP - Figma Component Transformer API',
+    name: 'FigmaMind API',
     version: '1.0.0',
     endpoints: {
       '/api': 'GET - Informações da API',

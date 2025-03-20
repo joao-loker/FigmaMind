@@ -1,12 +1,12 @@
-# Figma Component Transformer
+# FigmaMind
 
-Um sistema para extrair componentes do Figma e transformá-los em formato JSON padronizado que facilita a reconstrução de interfaces por IA.
+Conectando o design do Figma com a mente dos LLMs - Um sistema para extrair componentes do Figma e transformá-los em formato JSON padronizado que facilita a reconstrução de interfaces por IA.
 
 **[NOVO]**: Agora disponível como servidor MCP (Model Context Protocol) para integração direta com LLMs!
 
 ## Sobre o Projeto
 
-Este projeto permite extrair componentes do Figma através da API oficial e transformá-los em um formato JSON padronizado que pode ser facilmente consumido por aplicações e sistemas de IA para reconstrução de interfaces. O sistema é composto por um extrator, um processador, transformadores específicos para cada tipo de componente e uma API REST para acesso aos serviços.
+O FigmaMind permite extrair componentes do Figma através da API oficial e transformá-los em um formato JSON padronizado que pode ser facilmente consumido por aplicações e sistemas de IA para reconstrução de interfaces. O sistema é composto por um extrator, um processador, transformadores específicos para cada tipo de componente e uma API REST para acesso aos serviços.
 
 **Novidades**: 
 - **Suporte MCP**: Agora compatível com o Model Context Protocol para integração direta com LLMs
@@ -16,7 +16,7 @@ Este projeto permite extrair componentes do Figma através da API oficial e tran
 
 ## Uso como servidor MCP
 
-O Model Context Protocol (MCP) permite que o Figma Component Transformer seja facilmente integrado a modelos de linguagem grandes (LLMs) como uma ferramenta que fornece contexto estruturado.
+O Model Context Protocol (MCP) permite que o FigmaMind seja facilmente integrado a modelos de linguagem grandes (LLMs) como uma ferramenta que fornece contexto estruturado.
 
 ```bash
 # Iniciar como servidor MCP
@@ -28,7 +28,7 @@ Para mais detalhes sobre o MCP, consulte [README-MCP.md](README-MCP.md) e [smith
 ## Estrutura do Projeto
 
 ```
-figma-transformers/
+figmamind/
 ├── examples/
 │   ├── input/                      # Exemplos de entrada para testes
 │   │   └── example-figma-data.json
@@ -76,8 +76,8 @@ figma-transformers/
 
 1. Clone o repositório:
    ```
-   git clone https://github.com/joao-loker/DS-json-organize.git
-   cd DS-json-organize
+   git clone https://github.com/joao-loker/FigmaMind.git
+   cd FigmaMind
    ```
 
 2. Instale as dependências:
