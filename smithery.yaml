@@ -1,0 +1,17 @@
+name: figmamind
+description: FigmaMind - Transformador de componentes Figma para formato padronizado
+version: 1.0.0
+
+service:
+  type: jsonrpc
+  url: http://localhost:3000/jsonrpc
+  configSchema:
+    type: object
+    required: ["figmaToken"]
+    properties:
+      figmaToken:
+        type: string
+        description: "Token de acesso à API do Figma"
+
+build:
+  dockerfile: Dockerfile 

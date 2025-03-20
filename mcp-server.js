@@ -56,6 +56,43 @@ fs.ensureDirSync(ASSETS_DIR);
 // Verificar modo de execução (HTTP ou stdio)
 const USE_STDIO = process.env.MCP_USE_STDIO === 'true';
 
+// Carregar informações do MCP
+function loadMcpConfig() {
+  try {
+    return fs.readJsonSync(path.resolve('mcp.json'));
+  } catch (error) {
+    logger.error('Erro ao carregar mcp.json:', error);
+    return {
+      name: "figmamind",
+      version: "1.0.0",
+      description: "MCP server que transforma componentes do Figma em formato JSON padronizado",
+      protocol_version: "0.3"
+    };
+  }
+}
+
+// Lista de ferramentas/endpoints disponíveis
+function getAvailableTools() {
+  const mcpConfig = loadMcpConfig();
+  const tools = [];
+  
+  if (mcpConfig.endpoints) {
+    Object.keys(mcpConfig.endpoints).forEach(key => {
+      const endpoint = mcpConfig.endpoints[key];
+      tools.push({
+        name: key,
+        description: endpoint.description || `Endpoint ${key}`,
+        path: endpoint.path,
+        method: endpoint.method,
+        requestSchema: endpoint.request_schema,
+        responseSchema: endpoint.response_schema
+      });
+    });
+  }
+  
+  return tools;
+}
+
 // Manipulador de solicitações JSON-RPC
 async function handleJsonRpcRequest(request) {
   try {
@@ -73,9 +110,47 @@ async function handleJsonRpcRequest(request) {
     
     // Manipular diferentes métodos
     switch (method) {
+      case 'initialize':
+        try {
+          const mcpConfig = loadMcpConfig();
+          result = {
+            name: mcpConfig.name,
+            version: mcpConfig.version,
+            description: mcpConfig.description,
+            protocol_version: mcpConfig.protocol_version || "0.3",
+            capabilities: {
+              supports_stdio: true,
+              supports_http: true
+            }
+          };
+        } catch (error) {
+          logger.error('Erro ao inicializar MCP:', error);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32603, message: "Erro ao inicializar servidor MCP" },
+            id
+          };
+        }
+        break;
+        
+      case 'tools/list':
+        try {
+          result = {
+            tools: getAvailableTools()
+          };
+        } catch (error) {
+          logger.error('Erro ao listar ferramentas:', error);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32603, message: "Erro ao listar ferramentas disponíveis" },
+            id
+          };
+        }
+        break;
+        
       case 'info':
         try {
-          const mcpConfig = fs.readJsonSync(path.resolve('mcp.json'));
+          const mcpConfig = loadMcpConfig();
           result = {
             name: mcpConfig.name,
             version: mcpConfig.version,
@@ -162,7 +237,7 @@ async function handleJsonRpcRequest(request) {
           
           result = {
             success: true,
-            message: `Processados ${processed.componentsCount || processed.meta.totalComponents} componentes`,
+            message: `Processados ${processed.componentsCount || processed.meta?.totalComponents || 0} componentes`,
             source: figmaUrl,
             data: processed
           };
@@ -251,13 +326,13 @@ if (USE_STDIO) {
   // MCP Info Endpoint
   app.get('/', (req, res) => {
     try {
-      const mcpConfig = fs.readJsonSync(path.resolve('mcp.json'));
+      const mcpConfig = loadMcpConfig();
       return res.json({
         name: mcpConfig.name,
         version: mcpConfig.version,
         description: mcpConfig.description,
         protocol_version: mcpConfig.protocol_version,
-        endpoints: Object.keys(mcpConfig.endpoints).map(key => {
+        endpoints: Object.keys(mcpConfig.endpoints || {}).map(key => {
           const endpoint = mcpConfig.endpoints[key];
           return {
             name: key,
@@ -291,6 +366,33 @@ if (USE_STDIO) {
       status: 'ok',
       message: 'FigmaMind MCP operacional'
     });
+  });
+
+  // JSON-RPC Endpoint
+  app.post('/jsonrpc', async (req, res) => {
+    try {
+      // Garantir que o corpo é uma solicitação JSON-RPC
+      if (!req.body || typeof req.body !== 'object') {
+        return res.status(400).json({
+          jsonrpc: "2.0",
+          error: { code: -32600, message: "Invalid Request" },
+          id: null
+        });
+      }
+
+      // Processar a solicitação
+      const response = await handleJsonRpcRequest(req.body);
+      
+      // Enviar a resposta
+      return res.json(response);
+    } catch (error) {
+      logger.error('Erro ao processar solicitação JSON-RPC:', error);
+      return res.status(500).json({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal JSON-RPC error" },
+        id: req.body?.id || null
+      });
+    }
   });
 
   // MCP Transform Endpoint
@@ -334,7 +436,7 @@ if (USE_STDIO) {
       // Responder com os dados processados
       res.json({
         success: true,
-        message: `Processados ${processed.componentsCount} componentes`,
+        message: `Processados ${processed.componentsCount || processed.meta?.totalComponents || 0} componentes`,
         source: figmaUrl,
         data: processed
       });
@@ -378,11 +480,19 @@ if (USE_STDIO) {
     }
   });
 
+  // Aceitar solicitações WebSocket para JSON-RPC
+  app.get('/ws', (req, res) => {
+    res.setHeader('Upgrade', 'websocket');
+    res.status(426).json({
+      error: 'WebSocket upgrade requerido. Faça um upgrade de conexão para WebSocket para comunicação JSON-RPC.'
+    });
+  });
+
   // Iniciar servidor
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     logger.log(`FigmaMind MCP iniciado na porta ${PORT}`);
     logger.log(`Servidor disponível em http://localhost:${PORT}`);
-    logger.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename`);
+    logger.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename, /jsonrpc (JSON-RPC)`);
   });
 } 
