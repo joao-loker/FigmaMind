@@ -4,6 +4,26 @@ const {
   isProcessableComponent 
 } = require('./transformers');
 
+// Verificar se devemos suprimir logs
+const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
+
+// Funções de log condicionais
+const logger = {
+  log: (message) => {
+    if (!SUPPRESS_LOGS) {
+      console.log(message);
+    }
+  },
+  error: (message, error) => {
+    if (!SUPPRESS_LOGS) {
+      console.error(message, error);
+    } else {
+      // Sempre registrar erros, mas usar stderr para não interferir no protocolo
+      process.stderr.write(`ERROR: ${message} ${error ? error.toString() : ''}\n`);
+    }
+  }
+};
+
 /**
  * Processa os dados do Figma e extrai os componentes
  * 
@@ -16,12 +36,12 @@ function processData(figmaData, options = {}) {
     throw new Error('Dados do Figma inválidos');
   }
   
-  console.log('Processando dados do Figma...');
+  logger.log('Processando dados do Figma...');
   
   // Extrair componentes do documento
   const components = extractComponents(figmaData.document);
   
-  console.log(`Encontrados ${components.length} componentes`);
+  logger.log(`Encontrados ${components.length} componentes`);
   
   // Processar cada componente
   const processedComponents = components
@@ -32,7 +52,7 @@ function processData(figmaData, options = {}) {
           includeOriginal: options.includeOriginalData || false
         });
       } catch (error) {
-        console.error(`Erro ao processar componente ${component.id || 'desconhecido'}:`, error);
+        logger.error(`Erro ao processar componente ${component.id || 'desconhecido'}:`, error);
         return {
           id: component.id || `error-${Date.now()}`,
           type: 'error',

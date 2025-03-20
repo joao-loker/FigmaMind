@@ -5,6 +5,26 @@
  * uma interface unificada para aplicá-los.
  */
 
+// Verificar se devemos suprimir logs
+const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
+
+// Funções de log condicionais
+const logger = {
+  log: (message) => {
+    if (!SUPPRESS_LOGS) {
+      console.log(message);
+    }
+  },
+  error: (message, error) => {
+    if (!SUPPRESS_LOGS) {
+      console.error(message, error);
+    } else {
+      // Sempre registrar erros, mas usar stderr para não interferir no protocolo
+      process.stderr.write(`ERROR: ${message} ${error ? error.toString() : ''}\n`);
+    }
+  }
+};
+
 const { 
   registerTransformer, 
   getTransformer,
@@ -48,7 +68,7 @@ function applyTransformer(component, options = {}) {
   
   // Se não houver um transformador específico, usar o padrão
   if (!transformer) {
-    console.log(`Nenhum transformador encontrado para o tipo '${componentType}', usando o padrão`);
+    logger.log(`Nenhum transformador encontrado para o tipo '${componentType}', usando o padrão`);
     transformer = getTransformer('default');
   }
   
@@ -59,7 +79,7 @@ function applyTransformer(component, options = {}) {
       detectedType: componentType
     });
   } catch (error) {
-    console.error(`Erro ao transformar componente '${component.name || 'sem nome'}' do tipo '${componentType}':`, error);
+    logger.error(`Erro ao transformar componente '${component.name || 'sem nome'}' do tipo '${componentType}':`, error);
     
     // Em caso de erro, tentar usar o transformador padrão como fallback
     try {
@@ -69,7 +89,7 @@ function applyTransformer(component, options = {}) {
         transformationError: error.message
       });
     } catch (fallbackError) {
-      console.error('Erro ao aplicar transformador de fallback:', fallbackError);
+      logger.error('Erro ao aplicar transformador de fallback:', fallbackError);
       
       // Retornar um objeto mínimo como último recurso
       return {

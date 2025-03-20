@@ -1,0 +1,15 @@
+version: 1
+name: figmamind
+description: Serviço para transformar componentes do Figma em formato JSON padronizado
+
+service:
+  type: mcp
+  port: 3000
+  
+build:
+  dockerfile: Dockerfile
+
+env:
+  - name: FIGMA_TOKEN
+    required: true
+    description: Token de acesso à API do Figma 

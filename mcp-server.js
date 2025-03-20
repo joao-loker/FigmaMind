@@ -12,6 +12,38 @@ const figmaService = require('./src/services/figmaService');
 const { processData } = require('./src/processor/processor');
 require('dotenv').config();
 
+// Configuração de logging
+const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
+
+// Função de log personalizada para evitar logs no stdout quando necessário
+const logger = {
+  log: (...args) => {
+    if (!SUPPRESS_LOGS) {
+      console.log(...args);
+    }
+  },
+  error: (...args) => {
+    if (!SUPPRESS_LOGS) {
+      console.error(...args);
+    } else {
+      // Sempre registrar erros, mas usar stderr para não interferir no protocolo
+      process.stderr.write(`ERROR: ${args.join(' ')}\n`);
+    }
+  },
+  warn: (...args) => {
+    if (!SUPPRESS_LOGS) {
+      console.warn(...args);
+    } else {
+      process.stderr.write(`WARN: ${args.join(' ')}\n`);
+    }
+  },
+  info: (...args) => {
+    if (!SUPPRESS_LOGS) {
+      console.info(...args);
+    }
+  }
+};
+
 // Constantes
 const ASSETS_DIR = path.resolve('examples/output/assets');
 const OUTPUT_DIR = path.resolve('examples/output');
@@ -26,7 +58,11 @@ const app = express();
 // Middlewares
 app.use(express.json());
 app.use(cors());
-app.use(morgan('dev'));
+
+// Usar morgan apenas se não estiver suprimindo logs
+if (!SUPPRESS_LOGS) {
+  app.use(morgan('dev'));
+}
 
 // MCP Info Endpoint
 app.get('/', (req, res) => {
@@ -48,7 +84,7 @@ app.get('/', (req, res) => {
       })
     });
   } catch (error) {
-    console.error('Erro ao obter informações MCP:', error);
+    logger.error('Erro ao obter informações MCP:', error);
     return res.status(500).json({
       error: 'Erro ao obter informações do servidor MCP'
     });
@@ -92,7 +128,7 @@ app.post('/transform', async (req, res) => {
     }
     
     // Buscar dados do Figma
-    console.log(`Iniciando processamento de ${figmaUrl}`);
+    logger.log(`Iniciando processamento de ${figmaUrl}`);
     const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
     
     // Processar dados
@@ -119,7 +155,7 @@ app.post('/transform', async (req, res) => {
       data: processed
     });
   } catch (error) {
-    console.error('Erro ao processar transformação:', error);
+    logger.error('Erro ao processar transformação:', error);
     res.status(500).json({
       error: error.message || 'Internal server error'
     });
@@ -151,7 +187,7 @@ app.get('/assets/:filename', (req, res) => {
     res.setHeader('Content-Type', contentType);
     res.sendFile(filePath);
   } catch (error) {
-    console.error('Erro ao acessar asset:', error);
+    logger.error('Erro ao acessar asset:', error);
     res.status(500).json({
       error: error.message || 'Internal server error'
     });
@@ -161,7 +197,7 @@ app.get('/assets/:filename', (req, res) => {
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`FigmaMind MCP iniciado na porta ${PORT}`);
-  console.log(`Servidor disponível em http://localhost:${PORT}`);
-  console.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename`);
+  logger.log(`FigmaMind MCP iniciado na porta ${PORT}`);
+  logger.log(`Servidor disponível em http://localhost:${PORT}`);
+  logger.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename`);
 }); 

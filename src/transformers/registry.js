@@ -5,6 +5,16 @@
  * para diferentes tipos de componentes sem modificar o código central.
  */
 
+// Verificar se devemos suprimir logs
+const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
+
+// Função de log condicional
+const log = (message) => {
+  if (!SUPPRESS_LOGS) {
+    console.log(message);
+  }
+};
+
 // Registro central de transformadores por tipo de componente
 const transformerRegistry = new Map();
 
@@ -24,7 +34,7 @@ function registerTransformer(componentType, transformer) {
   }
   
   transformerRegistry.set(componentType.toLowerCase(), transformer);
-  console.log(`Transformador registrado para: ${componentType}`);
+  log(`Transformador registrado para: ${componentType}`);
 }
 
 /**
