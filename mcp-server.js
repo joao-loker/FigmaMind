@@ -363,31 +363,18 @@ if (USE_STDIO) {
   // Enviar sinal de inicialização bem-sucedida para stderr
   debug('FigmaMind MCP pronto para comunicação STDIO');
   
-  // Criar um diretório de logs se não existir
-  try {
-    fs.ensureDirSync(path.join(__dirname, 'logs'));
-    debug('Diretório de logs criado com sucesso');
-  } catch (error) {
-    debug(`Erro ao criar diretório de logs: ${error.message}`);
-  }
+  // Log em stderr o conteúdo do MCP
+  debug(`Ferramentas disponíveis: ${JSON.stringify(getAvailableTools())}`);
   
   // Configurar interface de leitura
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stdout,
+    output: null, // Importante: não usar stdout aqui para evitar duplicação
     terminal: false
   });
   
   // Garantir que o buffer de saída seja liberado imediatamente
   process.stdout.setEncoding('utf8');
-  if (typeof process.stdout.setDefaultEncoding === 'function') {
-    process.stdout.setDefaultEncoding('utf8');
-  }
-  
-  // Garantir que a saída ocorra imediatamente
-  if (typeof process.stdout.isTTY === 'boolean' && process.stdout.isTTY) {
-    process.stdout._handle.setBlocking(true);
-  }
   
   rl.on('line', async (line) => {
     try {
@@ -408,27 +395,26 @@ if (USE_STDIO) {
       // Log da resposta para debugging
       debug(`Enviando resposta para ID ${request.id}: ${JSON.stringify(response).substring(0, 200)}...`);
       
-      // Enviar a resposta
-      console.log(JSON.stringify(response));
+      // Enviar a resposta - usar console.log para garantir quebra de linha apropriada
+      process.stdout.write(JSON.stringify(response) + '\n');
     } catch (error) {
       debug(`Erro ao processar linha de entrada: ${error.message}`);
       debug(`Stack: ${error.stack}`);
       
       // Enviar resposta de erro para qualquer solicitação mal formada
-      console.log(JSON.stringify({
+      process.stdout.write(JSON.stringify({
         jsonrpc: "2.0",
         error: { code: -32700, message: "Parse error" },
         id: null
-      }));
+      }) + '\n');
     }
   });
   
-  // Detectar fechamento de stdin para encerrar o programa
+  // Tratar encerramento
   rl.on('close', () => {
-    debug('STDIN fechado, encerrando o servidor');
+    debug('Conexão STDIO encerrada');
     process.exit(0);
   });
-  
 } else {
   // Inicializar app
   const app = express();
