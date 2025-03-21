@@ -9,8 +9,10 @@ RUN npm install
 # Depois, copiar o resto dos arquivos
 COPY . .
 
-# Configurar variável de ambiente para suprimir logs durante a inicialização
+# Configurar variáveis de ambiente para MCP
 ENV MCP_SUPPRESS_LOGS=true
+ENV MCP_USE_STDIO=true
+ENV NODE_OPTIONS="--no-warnings"
 
 # Expor a porta que o serviço utiliza
 EXPOSE 3000

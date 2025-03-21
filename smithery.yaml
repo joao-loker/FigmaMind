@@ -1,28 +1,38 @@
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
 
+# Nome do servidor que aparecerá no registro do Smithery
+name: "FigmaMind"
+
+# Descrição do que o servidor faz
+description: "Extrai componentes do Figma e os converte para JSON padronizado para uso em IA"
+
+# Comando de inicialização do servidor
 startCommand:
+  # Especificando explicitamente o tipo stdio e configurando para compatibilidade estrita
   type: stdio
+  # Schema de configuração que será solicitado ao usuário
   configSchema:
-    # JSON Schema defining the configuration options for the MCP.
     type: object
-    required:
-      - figmaToken
     properties:
       figmaToken:
         type: string
-        description: Token de acesso à API do Figma
-  commandFunction:
-    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
-    |
+        description: "Token de acesso à API do Figma"
+        pattern: "^figd_[A-Za-z0-9_-]+$"
+    required:
+      - figmaToken
+  # Função que gera o comando para iniciar o servidor com Node.js 18
+  commandFunction: |
     (config) => ({
       command: "node",
       args: ["mcp-server.js"],
       env: {
         FIGMA_TOKEN: config.figmaToken,
+        MCP_USE_STDIO: "true",
         MCP_SUPPRESS_LOGS: "true",
-        MCP_USE_STDIO: "true"
+        NODE_OPTIONS: "--no-warnings"
       }
     })
 
+# Configuração para build do contêiner Docker
 build:
   dockerfile: "Dockerfile"

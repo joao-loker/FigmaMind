@@ -21,6 +21,9 @@ const DEBUG = process.env.MCP_DEBUG === 'true';
 // Verificar se o modo de teste foi solicitado
 const TEST_MODE = process.argv.includes('--test');
 
+// Modo de compatibilidade para Smithery
+const SMITHERY_COMPAT = process.env.SMITHERY_COMPAT === 'true';
+
 // Função para logs de debugging
 function debug(...args) {
   if (DEBUG) {
@@ -148,6 +151,76 @@ async function callTool(name, params) {
   }
 }
 
+// Adicionar esta função antes do bloco de código STDIO para processar as requisições
+async function processRequest(request) {
+  try {
+    debug(`Processando requisição: ${request.method}, ID: ${request.id}`);
+    
+    // Validar requisição JSON-RPC básica
+    if (!request || typeof request !== 'object' || typeof request.method !== 'string') {
+      return {
+        jsonrpc: "2.0",
+        error: { code: -32600, message: "Invalid Request" },
+        id: request?.id || null
+      };
+    }
+    
+    // Implementar os métodos padrão do MCP
+    switch (request.method) {
+      case 'listTools':
+        debug('Listando ferramentas disponíveis');
+        return {
+          jsonrpc: "2.0",
+          result: {
+            tools: getAvailableTools()
+          },
+          id: request.id
+        };
+        
+      case 'invokeToolByName':
+        if (!request.params || !request.params.name || !request.params.parameters) {
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32602, message: "Parâmetros inválidos para invokeToolByName" },
+            id: request.id
+          };
+        }
+        
+        debug(`Invocando ferramenta: ${request.params.name}`);
+        const result = await callTool(
+          request.params.name,
+          request.params.parameters
+        );
+        
+        return {
+          jsonrpc: "2.0",
+          result,
+          id: request.id
+        };
+        
+      default:
+        return {
+          jsonrpc: "2.0",
+          error: {
+            code: -32601,
+            message: `Método não encontrado: ${request.method}`
+          },
+          id: request.id
+        };
+    }
+  } catch (error) {
+    logger.error(`Erro processando requisição ${request?.method}:`, error);
+    return {
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: `Erro interno do servidor: ${error.message || 'Erro desconhecido'}`
+      },
+      id: request?.id || null
+    };
+  }
+}
+
 // Manipulador de solicitações JSON-RPC
 async function handleJsonRpcRequest(request) {
   try {
@@ -200,21 +273,6 @@ async function handleJsonRpcRequest(request) {
           return {
             jsonrpc: "2.0",
             error: { code: -32603, message: "Erro ao inicializar servidor MCP" },
-            id
-          };
-        }
-        break;
-        
-      case 'tools/list':
-        try {
-          result = {
-            tools: getAvailableTools()
-          };
-        } catch (error) {
-          logger.error('Erro ao listar ferramentas:', error);
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32603, message: "Erro ao listar ferramentas disponíveis" },
             id
           };
         }
@@ -323,25 +381,6 @@ async function handleJsonRpcRequest(request) {
         }
         break;
         
-      case 'tools/call':
-        try {
-          const toolCall = params || {};
-          
-          if (!toolCall.name) {
-            throw new Error("Missing tool name");
-          }
-          
-          result = await callTool(toolCall.name, toolCall.params);
-        } catch (error) {
-          logger.error('Erro ao executar ferramenta:', error);
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32603, message: error.message || "Internal server error" },
-            id
-          };
-        }
-        break;
-        
       default:
         return {
           jsonrpc: "2.0",
@@ -424,89 +463,71 @@ if (TEST_MODE) {
 
 // Iniciar modo stdio se necessário
 if (USE_STDIO) {
-  // Enviar mensagem para stderr para não interferir com o protocolo
-  debug('Iniciando FigmaMind MCP no modo stdio...');
+  logger.log('Iniciando protocolo MCP em modo STDIO...');
+  debug('MCP_USE_STDIO=true, usando protocolo JSON-RPC via STDIO');
   
-  // Enviar sinal de inicialização bem-sucedida para stderr
-  debug('FigmaMind MCP pronto para comunicação STDIO');
+  // Garantir que o buffer seja recebido corretamente
+  process.stdin.setEncoding('utf8');
   
-  // Log em stderr o conteúdo do MCP
-  debug(`Ferramentas disponíveis: ${JSON.stringify(getAvailableTools())}`);
-  
-  // Configurar interface de leitura
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: null, // Importante: não usar stdout aqui para evitar duplicação
-    terminal: false
-  });
-  
-  // Função para enviar resposta JSON-RPC de forma segura
-  function sendJsonRpcResponse(response) {
+  // Aumentar o buffer para mensagens grandes
+  if (process.stdin.setRawMode) {
     try {
-      const responseStr = JSON.stringify(response);
-      debug(`Enviando resposta: ${responseStr.substring(0, 100)}...`);
-      process.stdout.write(responseStr + '\n');
-    } catch (error) {
-      debug(`Erro ao enviar resposta: ${error.message}`);
-      const errorResponse = {
-        jsonrpc: "2.0",
-        error: { code: -32603, message: "Erro interno ao enviar resposta" },
-        id: response?.id || null
-      };
-      process.stdout.write(JSON.stringify(errorResponse) + '\n');
+      process.stdin.setRawMode(true);
+    } catch (e) {
+      debug('Aviso: Não foi possível definir o modo raw para stdin:', e.message);
     }
   }
   
-  // Processo de parsing de linha de comando
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+  });
+  
+  // Log de inicialização do servidor para debug
+  debug('Servidor STDIO inicializado e aguardando comandos...');
+  
   rl.on('line', async (line) => {
-    // Ignorar linhas vazias
-    if (!line || !line.trim()) {
-      debug('Linha vazia, ignorando');
+    if (!line.trim()) {
+      // Ignorar linhas vazias
       return;
     }
     
-    debug(`Entrada recebida: ${line.substring(0, 200)}...`);
-    
     try {
-      // Tentar analisar a entrada como JSON
+      debug(`Recebido comando STDIO: ${line.substr(0, 100)}${line.length > 100 ? '...' : ''}`);
       const request = JSON.parse(line);
       
-      // Validar requisição JSON-RPC básica
-      if (!request || typeof request !== 'object') {
-        debug('Requisição inválida: não é um objeto');
-        sendJsonRpcResponse({
-          jsonrpc: "2.0",
-          error: { code: -32600, message: "Invalid Request" },
-          id: null
-        });
+      if (!request.id) {
+        debug('Aviso: Requisição sem ID recebida');
         return;
       }
       
-      // Log da requisição em modo debug
-      debug(`Método: ${request.method}, ID: ${request.id}`);
-      
-      // Processar a solicitação
-      const response = await handleJsonRpcRequest(request);
+      // Processar a requisição
+      const response = await processRequest(request);
       
       // Enviar a resposta
-      sendJsonRpcResponse(response);
-    } catch (error) {
-      debug(`Erro ao processar linha: ${error.message}`);
+      const responseText = JSON.stringify(response);
+      debug(`Enviando resposta STDIO: ${responseText.substr(0, 100)}${responseText.length > 100 ? '...' : ''}`);
       
-      // Verificar se é um erro de parsing JSON
-      if (error instanceof SyntaxError) {
-        sendJsonRpcResponse({
-          jsonrpc: "2.0",
-          error: { code: -32700, message: "Parse error" },
-          id: null
-        });
-      } else {
-        // Outros erros internos
-        sendJsonRpcResponse({
-          jsonrpc: "2.0",
-          error: { code: -32603, message: "Internal error" },
-          id: null
-        });
+      process.stdout.write(responseText + '\n');
+    } catch (error) {
+      logger.error('Erro processando comando STDIO:', error);
+      
+      // Tentar responder com erro se tiver um ID
+      try {
+        const errorId = (line && JSON.parse(line).id) || 'unknown-id';
+        const errorResponse = {
+          jsonrpc: '2.0',
+          id: errorId,
+          error: {
+            code: -32000,
+            message: `Erro interno do servidor: ${error.message || 'Erro desconhecido'}`
+          }
+        };
+        
+        process.stdout.write(JSON.stringify(errorResponse) + '\n');
+      } catch (respondError) {
+        logger.error('Não foi possível enviar resposta de erro:', respondError);
       }
     }
   });
