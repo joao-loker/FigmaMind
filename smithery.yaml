@@ -25,4 +25,4 @@ startCommand:
     })
 
 build:
-  dockerfile: Dockerfile
+  dockerfile: Dockerfile 
