@@ -22,7 +22,7 @@
     "optional": ["PORT"]
   },
   "endpoints": {
-    "default": {
+    "transform": {
       "path": "/transform",
       "method": "POST",
       "description": "Transforma componentes do Figma em formato JSON padronizado",
@@ -32,26 +32,29 @@
         "properties": {
           "figmaUrl": {
             "type": "string",
-            "description": "URL do arquivo do Figma para processar",
-            "example": "https://www.figma.com/design/Mlgjf3cCMzOIwM27GLx81Y/New-Onboarding?node-id=2045-33564"
+            "description": "URL do arquivo ou frame do Figma para processar"
           }
         }
       },
       "response_schema": {
         "type": "object",
         "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "message": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          },
-          "data": {
-            "type": "object"
-          }
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "source": { "type": "string" },
+          "data": { "type": "object" }
+        }
+      }
+    },
+    "health": {
+      "path": "/health",
+      "method": "GET",
+      "description": "Verifica a saúde do servidor",
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "message": { "type": "string" }
         }
       }
     },
