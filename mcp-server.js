@@ -15,6 +15,14 @@ require('dotenv').config();
 
 // Configuração de logging
 const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
+const DEBUG = process.env.MCP_DEBUG === 'true';
+
+// Função para logs de debugging
+function debug(...args) {
+  if (DEBUG) {
+    process.stderr.write(`[DEBUG] ${args.join(' ')}\n`);
+  }
+}
 
 // Função de log personalizada para evitar logs no stdout quando necessário
 const logger = {
@@ -112,17 +120,26 @@ async function handleJsonRpcRequest(request) {
     switch (method) {
       case 'initialize':
         try {
+          // Verificar se estamos usando a versão mais recente do MCP que usa initialParams 
+          // e adaptar para compatibilidade
           const mcpConfig = loadMcpConfig();
+          
+          debug(`Initialize chamado com params: ${JSON.stringify(params)}`);
+          
+          // Garantir que estamos retornando os campos obrigatórios de acordo com o MCP
           result = {
-            name: mcpConfig.name,
-            version: mcpConfig.version,
-            description: mcpConfig.description,
-            protocol_version: mcpConfig.protocol_version || "0.3",
+            name: mcpConfig.name || "figmamind",
+            version: mcpConfig.version || "1.0.0",
+            description: mcpConfig.description || "MCP server que transforma componentes do Figma em formato JSON padronizado",
+            protocol_version: params?.protocol_version || mcpConfig.protocol_version || "0.3",
             capabilities: {
               supports_stdio: true,
               supports_http: true
             }
           };
+          
+          // Log específico para debugging do initialize
+          debug(`Initialize response: ${JSON.stringify({jsonrpc: "2.0", result, id: id})}`);
         } catch (error) {
           logger.error('Erro ao inicializar MCP:', error);
           return {
@@ -277,10 +294,10 @@ async function handleJsonRpcRequest(request) {
 // Iniciar modo stdio se necessário
 if (USE_STDIO) {
   // Enviar mensagem para stderr para não interferir com o protocolo
-  process.stderr.write('Iniciando FigmaMind MCP no modo stdio...\n');
+  debug('Iniciando FigmaMind MCP no modo stdio...');
   
   // Enviar sinal de inicialização bem-sucedida para stderr
-  process.stderr.write('FigmaMind MCP pronto para comunicação STDIO\n');
+  debug('FigmaMind MCP pronto para comunicação STDIO');
   
   const rl = readline.createInterface({
     input: process.stdin,
@@ -293,22 +310,25 @@ if (USE_STDIO) {
       // Ignorar linhas vazias
       if (!line.trim()) return;
       
-      // Log da entrada recebida (para stderr para debugging)
-      process.stderr.write(`STDIN received: ${line}\n`);
+      // Log da entrada recebida
+      debug(`STDIN recebido: ${line}`);
       
       // Tentar analisar a entrada como JSON
       const request = JSON.parse(line);
+      
+      debug(`Método: ${request.method}, ID: ${request.id}`);
       
       // Processar a solicitação
       const response = await handleJsonRpcRequest(request);
       
       // Log da resposta para debugging
-      process.stderr.write(`STDOUT sending response for ID ${request.id}\n`);
+      debug(`Enviando resposta para ID ${request.id}: ${JSON.stringify(response).substring(0, 200)}...`);
       
       // Enviar a resposta
       console.log(JSON.stringify(response));
     } catch (error) {
-      process.stderr.write(`Erro ao processar linha de entrada: ${error.message}\n`);
+      debug(`Erro ao processar linha de entrada: ${error.message}`);
+      debug(`Stack: ${error.stack}`);
       
       // Enviar resposta de erro para qualquer solicitação mal formada
       console.log(JSON.stringify({
@@ -321,7 +341,7 @@ if (USE_STDIO) {
   
   // Detectar fechamento de stdin para encerrar o programa
   rl.on('close', () => {
-    process.stderr.write('STDIN fechado, encerrando o servidor\n');
+    debug('STDIN fechado, encerrando o servidor');
     process.exit(0);
   });
   
