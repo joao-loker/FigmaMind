@@ -315,13 +315,13 @@ async function handleJsonRpcRequest(request) {
         
       case 'tools/call':
         try {
-          const { name, params } = params || {};
+          const toolCall = params || {};
           
-          if (!name) {
+          if (!toolCall.name) {
             throw new Error("Missing tool name");
           }
           
-          result = await callTool(name, params);
+          result = await callTool(toolCall.name, toolCall.params);
         } catch (error) {
           logger.error('Erro ao executar ferramenta:', error);
           return {
