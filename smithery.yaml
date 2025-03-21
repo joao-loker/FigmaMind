@@ -20,19 +20,21 @@ startCommand:
         pattern: "^figd_[A-Za-z0-9_-]+$"
     required:
       - figmaToken
-  # Função que gera o comando para iniciar o servidor com Node.js 18
+  # Função que gera o comando para iniciar o servidor com Node.js 20
   commandFunction: |
     (config) => ({
-      command: "node",
-      args: ["mcp-server.js"],
+      command: "./start-with-node20.sh",
+      args: [],
       env: {
         FIGMA_TOKEN: config.figmaToken,
         MCP_USE_STDIO: "true",
-        MCP_SUPPRESS_LOGS: "true",
-        NODE_OPTIONS: "--no-warnings"
+        MCP_SUPPRESS_LOGS: "true"
       }
     })
 
 # Configuração para build do contêiner Docker
 build:
   dockerfile: "Dockerfile"
+  # Especificar Node.js 20 para o contêiner Docker
+  args:
+    NODE_VERSION: "20"
