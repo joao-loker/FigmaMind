@@ -19,5 +19,80 @@ service:
         MCP_USE_STDIO: "true"
       }
     })
+  readme: |
+    # FigmaMind
+
+    Transforma componentes do Figma em formato JSON padronizado que facilita a reconstrução por IA.
+    
+    ## Sobre o serviço
+
+    Este serviço MCP permite extrair componentes do Figma através da API oficial e transformá-los em um formato JSON padronizado. Isso facilita a reconstrução de interfaces por IA.
+    
+    ## Uso com Cursor
+
+    Para integrar com o Cursor, você pode usar a versão publicada no Smithery ou uma versão local simplificada.
+
+    ### Via Smithery
+    
+    Adicione ao seu arquivo ~/.cursor/mcp.json:
+    
+    ```json
+    "figmamind": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@joao-loker/figmamind",
+        "--config",
+        "{\"figmaToken\":\"seu-token-aqui\"}"
+      ]
+    }
+    ```
+    
+    ### Com API Key do Smithery
+    
+    Se você possui uma API key do Smithery, pode usá-la para autenticação:
+    
+    ```json
+    "figmamind": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@joao-loker/figmamind",
+        "--api-key",
+        "sua-api-key-do-smithery",
+        "--config",
+        "{\"figmaToken\":\"seu-token-aqui\"}"
+      ]
+    }
+    ```
+    
+    Você pode obter sua API key na página de perfil em [smithery.ai](https://smithery.ai/).
+    
+    ### Via local (modo minimalista)
+    
+    Use a versão minimalista para melhor compatibilidade com Cursor:
+    
+    ```json
+    "FigmaMind": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/caminho/para/minimal-mcp.js"
+      ],
+      "env": {
+        "FIGMA_TOKEN": "seu-token-aqui"
+      }
+    }
+    ```
+    
+    ## Ferramentas disponíveis
+    
+    - `figmamind_transform`: Transforma componentes do Figma em formato JSON padronizado
+      - Parâmetros: `figmaUrl` - URL do arquivo ou frame do Figma para processar
+
 build:
   dockerfile: Dockerfile 

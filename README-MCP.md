@@ -85,11 +85,57 @@ O [Smithery](https://smithery.ai/) é uma plataforma para descobrir, compartilha
 
 4. Adicione a URL do seu repositório e siga as instruções.
 
-5. O Smithery detectará automaticamente seu arquivo `mcp.json` e utilizará as informações nele para configurar o servidor.
+5. O Smithery detectará automaticamente seu arquivo `smithery.yaml` e utilizará as informações nele para configurar o servidor.
+
+### Uso direto via CLI do Smithery
+
+Você pode usar o FigmaMind diretamente através da CLI do Smithery:
+
+```bash
+npx @smithery/cli@latest run @joao-loker/figmamind --config '{"figmaToken":"seu-token-do-figma"}'
+```
+
+### Integração com o Cursor
+
+Para integrar o FigmaMind no Cursor via Smithery, adicione a seguinte configuração ao arquivo `~/.cursor/mcp.json`:
+
+```json
+"figmamind": {
+  "command": "npx",
+  "args": [
+    "-y",
+    "@smithery/cli@latest",
+    "run",
+    "@joao-loker/figmamind",
+    "--config",
+    "{\"figmaToken\":\"seu-token-do-figma\"}"
+  ]
+}
+```
+
+Para usar com uma API key do Smithery:
+
+```json
+"figmamind": {
+  "command": "npx",
+  "args": [
+    "-y",
+    "@smithery/cli@latest",
+    "run",
+    "@joao-loker/figmamind",
+    "--api-key",
+    "sua-api-key-do-smithery",
+    "--config",
+    "{\"figmaToken\":\"seu-token-do-figma\"}"
+  ]
+}
+```
 
 ### Configuração de Segurança para o Smithery
 
 No Smithery, você precisará configurar a variável de ambiente `FIGMA_TOKEN` como segredo. Isso permite que o servidor se comunique com o Figma API sem expor seu token.
+
+Alternativamente, você pode obter uma API key do Smithery em seu perfil em [smithery.ai](https://smithery.ai/) e usá-la para autenticação.
 
 ## Modelo de Resposta
 
