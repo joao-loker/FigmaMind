@@ -26,11 +26,9 @@ startCommand:
       console.log(`[DEBUG] Configurando comando para Smithery com token: ${config.figmaToken.slice(0, 10)}...`);
       return {
         command: "node",
-        args: ["mcp-server.js"],
+        args: ["cursor-mcp.js"],
         env: {
           FIGMA_TOKEN: config.figmaToken,
-          MCP_USE_STDIO: "true",
-          MCP_SUPPRESS_LOGS: "false",
           MCP_DEBUG: "true",
           NODE_OPTIONS: "--no-experimental-fetch"
         }
