@@ -7,11 +7,17 @@
 
 // Verificar se devemos suprimir logs
 const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
+const USE_STDIO = process.env.MCP_USE_STDIO === 'true';
+const DEBUG = process.env.MCP_DEBUG === 'true';
 
 // Função de log condicional
 const log = (message) => {
-  if (!SUPPRESS_LOGS) {
+  if (!SUPPRESS_LOGS && !USE_STDIO) {
+    // Modo normal: usar console.log apenas se não estiver em STDIO e não estiver suprimindo logs
     console.log(message);
+  } else if (DEBUG) {
+    // Modo debug: usar stderr para não interferir com o protocolo STDIO
+    process.stderr.write(`[DEBUG] ${message}\n`);
   }
 };
 

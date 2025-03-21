@@ -15,6 +15,7 @@ require('dotenv').config();
 
 // Configuração de logging
 const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
+const USE_STDIO = process.env.MCP_USE_STDIO === 'true';
 const DEBUG = process.env.MCP_DEBUG === 'true';
 
 // Função para logs de debugging
@@ -27,28 +28,34 @@ function debug(...args) {
 // Função de log personalizada para evitar logs no stdout quando necessário
 const logger = {
   log: (...args) => {
-    if (!SUPPRESS_LOGS) {
+    // Nunca usar console.log no modo STDIO, mesmo se SUPPRESS_LOGS for false
+    if (!SUPPRESS_LOGS && !USE_STDIO) {
       console.log(...args);
+    } else if (DEBUG) {
+      // No modo STDIO ou com supressão ativa, usar stderr para debug
+      process.stderr.write(`[INFO] ${args.join(' ')}\n`);
     }
   },
   error: (...args) => {
-    if (!SUPPRESS_LOGS) {
+    if (!SUPPRESS_LOGS && !USE_STDIO) {
       console.error(...args);
     } else {
       // Sempre registrar erros, mas usar stderr para não interferir no protocolo
-      process.stderr.write(`ERROR: ${args.join(' ')}\n`);
+      process.stderr.write(`[ERROR] ${args.join(' ')}\n`);
     }
   },
   warn: (...args) => {
-    if (!SUPPRESS_LOGS) {
+    if (!SUPPRESS_LOGS && !USE_STDIO) {
       console.warn(...args);
-    } else {
-      process.stderr.write(`WARN: ${args.join(' ')}\n`);
+    } else if (DEBUG) {
+      process.stderr.write(`[WARN] ${args.join(' ')}\n`);
     }
   },
   info: (...args) => {
-    if (!SUPPRESS_LOGS) {
+    if (!SUPPRESS_LOGS && !USE_STDIO) {
       console.info(...args);
+    } else if (DEBUG) {
+      process.stderr.write(`[INFO] ${args.join(' ')}\n`);
     }
   }
 };
@@ -62,7 +69,7 @@ fs.ensureDirSync(OUTPUT_DIR);
 fs.ensureDirSync(ASSETS_DIR);
 
 // Verificar modo de execução (HTTP ou stdio)
-const USE_STDIO = process.env.MCP_USE_STDIO === 'true';
+// const USE_STDIO = process.env.MCP_USE_STDIO === 'true'; // Já definido acima
 
 // Carregar informações do MCP
 function loadMcpConfig() {
@@ -373,40 +380,74 @@ if (USE_STDIO) {
     terminal: false
   });
   
-  // Garantir que o buffer de saída seja liberado imediatamente
-  process.stdout.setEncoding('utf8');
-  
-  rl.on('line', async (line) => {
+  // Função para enviar resposta JSON-RPC de forma segura
+  function sendJsonRpcResponse(response) {
     try {
-      // Ignorar linhas vazias
-      if (!line.trim()) return;
-      
-      // Log da entrada recebida
-      debug(`STDIN recebido: ${line}`);
-      
+      const responseStr = JSON.stringify(response);
+      debug(`Enviando resposta: ${responseStr.substring(0, 100)}...`);
+      process.stdout.write(responseStr + '\n');
+    } catch (error) {
+      debug(`Erro ao enviar resposta: ${error.message}`);
+      const errorResponse = {
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Erro interno ao enviar resposta" },
+        id: response?.id || null
+      };
+      process.stdout.write(JSON.stringify(errorResponse) + '\n');
+    }
+  }
+  
+  // Processo de parsing de linha de comando
+  rl.on('line', async (line) => {
+    // Ignorar linhas vazias
+    if (!line || !line.trim()) {
+      debug('Linha vazia, ignorando');
+      return;
+    }
+    
+    debug(`Entrada recebida: ${line.substring(0, 200)}...`);
+    
+    try {
       // Tentar analisar a entrada como JSON
       const request = JSON.parse(line);
       
+      // Validar requisição JSON-RPC básica
+      if (!request || typeof request !== 'object') {
+        debug('Requisição inválida: não é um objeto');
+        sendJsonRpcResponse({
+          jsonrpc: "2.0",
+          error: { code: -32600, message: "Invalid Request" },
+          id: null
+        });
+        return;
+      }
+      
+      // Log da requisição em modo debug
       debug(`Método: ${request.method}, ID: ${request.id}`);
       
       // Processar a solicitação
       const response = await handleJsonRpcRequest(request);
       
-      // Log da resposta para debugging
-      debug(`Enviando resposta para ID ${request.id}: ${JSON.stringify(response).substring(0, 200)}...`);
-      
-      // Enviar a resposta - usar console.log para garantir quebra de linha apropriada
-      process.stdout.write(JSON.stringify(response) + '\n');
+      // Enviar a resposta
+      sendJsonRpcResponse(response);
     } catch (error) {
-      debug(`Erro ao processar linha de entrada: ${error.message}`);
-      debug(`Stack: ${error.stack}`);
+      debug(`Erro ao processar linha: ${error.message}`);
       
-      // Enviar resposta de erro para qualquer solicitação mal formada
-      process.stdout.write(JSON.stringify({
-        jsonrpc: "2.0",
-        error: { code: -32700, message: "Parse error" },
-        id: null
-      }) + '\n');
+      // Verificar se é um erro de parsing JSON
+      if (error instanceof SyntaxError) {
+        sendJsonRpcResponse({
+          jsonrpc: "2.0",
+          error: { code: -32700, message: "Parse error" },
+          id: null
+        });
+      } else {
+        // Outros erros internos
+        sendJsonRpcResponse({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal error" },
+          id: null
+        });
+      }
     }
   });
   
@@ -415,6 +456,15 @@ if (USE_STDIO) {
     debug('Conexão STDIO encerrada');
     process.exit(0);
   });
+  
+  // Capturar erros de processo para evitar crashes
+  process.on('uncaughtException', (error) => {
+    debug(`Erro não tratado: ${error.message}`);
+    debug(error.stack);
+  });
+  
+  // Enviar um erro para saídas que não sejam STDIO
+  process.stderr.write('[INFO] FigmaMind MCP iniciado em modo STDIO\n');
 } else {
   // Inicializar app
   const app = express();
