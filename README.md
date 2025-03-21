@@ -1,5 +1,7 @@
 # FigmaMind
 
+[![smithery badge](https://smithery.ai/badge/@joao-loker/figmamind)](https://smithery.ai/server/@joao-loker/figmamind)
+
 Conectando o design do Figma com a mente dos LLMs - Um sistema para extrair componentes do Figma e transformá-los em formato JSON padronizado que facilita a reconstrução de interfaces por IA.
 
 **[NOVO]**: Agora disponível como servidor MCP (Model Context Protocol) para integração direta com LLMs!
