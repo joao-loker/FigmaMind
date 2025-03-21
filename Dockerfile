@@ -9,13 +9,16 @@ RUN npm install
 # Depois, copiar o resto dos arquivos
 COPY . .
 
+# Tornar o script de inicialização executável
+RUN chmod +x start-with-node20.sh
+
 # Configurar variáveis de ambiente para MCP
 ENV MCP_SUPPRESS_LOGS=true
 ENV MCP_USE_STDIO=true
-ENV NODE_OPTIONS="--no-warnings"
+ENV FIGMA_TOKEN=""
 
 # Expor a porta que o serviço utiliza
 EXPOSE 3000
 
-# Comando para iniciar o serviço
-CMD ["node", "mcp-server.js"] 
+# Comando para iniciar o serviço usando o script que garante Node.js 20
+CMD ["./start-with-node20.sh"] 

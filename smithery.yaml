@@ -20,17 +20,22 @@ startCommand:
         pattern: "^figd_[A-Za-z0-9_-]+$"
     required:
       - figmaToken
-  # Função que gera o comando para iniciar o servidor com Node.js 20
+  # Função que gera o comando para iniciar o servidor com compatibilidade Node.js 20
   commandFunction: |
-    (config) => ({
-      command: "./start-with-node20.sh",
-      args: [],
-      env: {
-        FIGMA_TOKEN: config.figmaToken,
-        MCP_USE_STDIO: "true",
-        MCP_SUPPRESS_LOGS: "true"
-      }
-    })
+    (config) => {
+      console.log(`[DEBUG] Configurando comando para Smithery com token: ${config.figmaToken.slice(0, 10)}...`);
+      return {
+        command: "node",
+        args: ["mcp-server.js"],
+        env: {
+          FIGMA_TOKEN: config.figmaToken,
+          MCP_USE_STDIO: "true",
+          MCP_SUPPRESS_LOGS: "false",
+          MCP_DEBUG: "true",
+          NODE_OPTIONS: "--no-experimental-fetch"
+        }
+      };
+    }
 
 # Configuração para build do contêiner Docker
 build:
