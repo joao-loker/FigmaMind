@@ -1,5 +1,5 @@
 # Smithery configuration file
-startCommand:
+service:
   type: stdio
   configSchema:
     type: object
@@ -18,4 +18,6 @@ startCommand:
         MCP_SUPPRESS_LOGS: "true",
         MCP_USE_STDIO: "true"
       }
-    }) 
+    })
+build:
+  dockerfile: Dockerfile 
