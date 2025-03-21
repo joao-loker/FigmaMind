@@ -25,6 +25,33 @@ node mcp-server.js
 
 Para mais detalhes sobre o MCP, consulte [README-MCP.md](README-MCP.md) e [smithery.md](smithery.md).
 
+## Integração com o Cursor
+
+O FigmaMind agora pode ser usado como uma extensão do Cursor (IDE baseada em IA) através do protocolo MCP. Isso permite que você transforme componentes do Figma diretamente nas suas conversas com a IA.
+
+Para configurar a integração com o Cursor:
+
+```bash
+# Iniciar a versão minimalista recomendada para o Cursor
+./start-mcp.sh --minimal
+```
+
+Ou edite o arquivo de configuração do Cursor:
+```json
+"FigmaMind": {
+  "type": "stdio",
+  "command": "node",
+  "args": [
+    "/caminho/completo/para/minimal-mcp.js"
+  ],
+  "env": {
+    "FIGMA_TOKEN": "seu-token-do-figma"
+  }
+}
+```
+
+Para mais detalhes sobre a integração com Cursor, consulte [README-CURSOR.md](README-CURSOR.md).
+
 ## Estrutura do Projeto
 
 ```
@@ -199,7 +226,7 @@ O novo formato JSON foi aprimorado para facilitar a reconstrução de interfaces
 A documentação do projeto foi reorganizada para maior clareza:
 
 - **guia-rapido.md**: Guia essencial para iniciantes
-- **docs/technical-details.md**: Documentação técnica detalhada (consolidada a partir de arquivos anteriores)
+- **docs/technical-details.md**: Documentação técnica detalhada (consolidado a partir de arquivos anteriores)
 - **docs/component-types.md**: Documentação específica para cada tipo de componente
 - **docs/assets-extraction.md**: Guia para extração e uso de assets
 - **README-MCP.md**: Documentação específica para uso como servidor MCP
