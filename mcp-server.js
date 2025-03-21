@@ -106,10 +106,18 @@ async function handleJsonRpcRequest(request) {
   try {
     const { id, method, params } = request;
     
-    if (!id || !method) {
+    // Log para debug
+    debug(`Recebido JSON-RPC: ${JSON.stringify(request)}`);
+    
+    if (!id) {
+      debug('ID ausente na requisição, usando ID nulo');
+    }
+    
+    if (!method) {
+      debug('Método ausente na requisição');
       return { 
         jsonrpc: "2.0", 
-        error: { code: -32600, message: "Invalid Request" }, 
+        error: { code: -32600, message: "Invalid Request - Missing method" }, 
         id: id || null 
       };
     }
@@ -299,11 +307,31 @@ if (USE_STDIO) {
   // Enviar sinal de inicialização bem-sucedida para stderr
   debug('FigmaMind MCP pronto para comunicação STDIO');
   
+  // Criar um diretório de logs se não existir
+  try {
+    fs.ensureDirSync(path.join(__dirname, 'logs'));
+    debug('Diretório de logs criado com sucesso');
+  } catch (error) {
+    debug(`Erro ao criar diretório de logs: ${error.message}`);
+  }
+  
+  // Configurar interface de leitura
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: false
   });
+  
+  // Garantir que o buffer de saída seja liberado imediatamente
+  process.stdout.setEncoding('utf8');
+  if (typeof process.stdout.setDefaultEncoding === 'function') {
+    process.stdout.setDefaultEncoding('utf8');
+  }
+  
+  // Garantir que a saída ocorra imediatamente
+  if (typeof process.stdout.isTTY === 'boolean' && process.stdout.isTTY) {
+    process.stdout._handle.setBlocking(true);
+  }
   
   rl.on('line', async (line) => {
     try {
