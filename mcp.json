@@ -1,26 +1,8 @@
 {
   "name": "figmamind",
   "version": "1.0.0",
-  "description": "MCP server que transforma componentes do Figma em formato JSON padronizado para reconstrução por IA",
-  "repository": "https://github.com/joao-loker/FigmaMind",
+  "description": "MCP server que transforma componentes do Figma em formato JSON padronizado",
   "protocol_version": "0.3",
-  "main": "mcp-server.js",
-  "author": "João Pereira",
-  "license": "MIT",
-  "tags": ["figma", "design-system", "ui-components", "json-transformer", "figmamind"],
-  "metadata": {
-    "smithery": {
-      "icon": "🧠",
-      "category": "design"
-    }
-  },
-  "commands": {
-    "start": "node mcp-server.js"
-  },
-  "env": {
-    "required": ["FIGMA_TOKEN"],
-    "optional": ["PORT"]
-  },
   "endpoints": {
     "transform": {
       "path": "/transform",
@@ -57,12 +39,22 @@
           "message": { "type": "string" }
         }
       }
-    },
-    "assets": {
-      "path": "/assets/:filename",
-      "method": "GET",
-      "description": "Acessa assets extraídos do Figma",
-      "response_content_type": "image/*"
     }
-  }
+  },
+  "tools": [
+    {
+      "name": "figmamind_transform",
+      "description": "Transforma componentes do Figma em formato JSON padronizado",
+      "schema": {
+        "type": "object",
+        "required": ["figmaUrl"],
+        "properties": {
+          "figmaUrl": {
+            "type": "string",
+            "description": "URL do arquivo ou frame do Figma para processar"
+          }
+        }
+      }
+    }
+  ]
 } 

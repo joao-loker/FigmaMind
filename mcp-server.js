@@ -84,21 +84,58 @@ function getAvailableTools() {
   const mcpConfig = loadMcpConfig();
   const tools = [];
   
-  if (mcpConfig.endpoints) {
-    Object.keys(mcpConfig.endpoints).forEach(key => {
-      const endpoint = mcpConfig.endpoints[key];
+  if (mcpConfig.tools && Array.isArray(mcpConfig.tools)) {
+    mcpConfig.tools.forEach(tool => {
       tools.push({
-        name: key,
-        description: endpoint.description || `Endpoint ${key}`,
-        path: endpoint.path,
-        method: endpoint.method,
-        requestSchema: endpoint.request_schema,
-        responseSchema: endpoint.response_schema
+        name: tool.name,
+        description: tool.description || '',
+        schema: tool.schema || {}
       });
     });
   }
   
   return tools;
+}
+
+// Executa uma ferramenta específica
+async function callTool(name, params) {
+  debug(`Chamando ferramenta: ${name} com parâmetros: ${JSON.stringify(params)}`);
+  
+  switch (name) {
+    case 'figmamind_transform':
+      const { figmaUrl } = params || {};
+      
+      if (!figmaUrl) {
+        throw new Error("Missing figmaUrl parameter");
+      }
+      
+      // Verificar token do Figma
+      if (!process.env.FIGMA_TOKEN) {
+        throw new Error("FIGMA_TOKEN não configurado");
+      }
+      
+      try {
+        // Buscar dados do Figma
+        debug(`Iniciando processamento de ${figmaUrl}`);
+        const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
+        
+        // Processar dados
+        const processed = await processData(figmaResult.data, figmaResult.fileKey);
+        
+        return {
+          success: true,
+          message: `Processados ${processed.componentsCount || processed.meta?.totalComponents || 0} componentes`,
+          source: figmaUrl,
+          data: processed
+        };
+      } catch (error) {
+        debug(`Erro ao executar transformação: ${error.message}`);
+        throw new Error(error.message || "Erro no processamento do Figma");
+      }
+    
+    default:
+      throw new Error(`Ferramenta '${name}' não encontrada`);
+  }
 }
 
 // Manipulador de solicitações JSON-RPC
@@ -268,6 +305,25 @@ async function handleJsonRpcRequest(request) {
           };
         } catch (error) {
           logger.error('Erro ao processar transformação:', error);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32603, message: error.message || "Internal server error" },
+            id
+          };
+        }
+        break;
+        
+      case 'tools/call':
+        try {
+          const { name, params } = params || {};
+          
+          if (!name) {
+            throw new Error("Missing tool name");
+          }
+          
+          result = await callTool(name, params);
+        } catch (error) {
+          logger.error('Erro ao executar ferramenta:', error);
           return {
             jsonrpc: "2.0",
             error: { code: -32603, message: error.message || "Internal server error" },
