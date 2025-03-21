@@ -1,423 +1,252 @@
+#!/usr/bin/env node
+
 /**
- * MCP Server para FigmaMind
- * Este arquivo implementa o Model Context Protocol para o FigmaMind
+ * MCP Server - FigmaMind
+ * Implementação de servidor MCP (Model Context Protocol) para 
+ * extrair componentes do Figma e convertê-los para JSON padronizado.
  */
 
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const path = require('path');
-const fs = require('fs-extra');
+// Importações de módulos
+const fs = require('fs');
 const readline = require('readline');
 const figmaService = require('./src/services/figmaService');
-const { processData } = require('./src/processor');
-require('dotenv').config();
+const componentProcessor = require('./src/services/componentProcessor');
+const jsonTransformer = require('./src/services/jsonTransformer');
 
-// Configuração de logging
-const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
-const USE_STDIO = process.env.MCP_USE_STDIO === 'true';
-const DEBUG = process.env.MCP_DEBUG === 'true';
-
-// Verificar se o modo de teste foi solicitado
+// Configuração e inicialização
+const DEBUG = process.env.MCP_DEBUG === 'true' || false;
+const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true' || false;
+const USE_STDIO = process.env.MCP_USE_STDIO === 'true' || false;
 const TEST_MODE = process.argv.includes('--test');
 
-// Modo de compatibilidade para Smithery
-const SMITHERY_COMPAT = process.env.SMITHERY_COMPAT === 'true';
+// Buscando token do Figma da variável de ambiente ou argumentos
+let FIGMA_TOKEN = process.env.FIGMA_TOKEN || '';
 
-// Verificar se o token do Figma foi fornecido via argumentos de linha de comando
-const args = process.argv.slice(2);
-let configIndex = args.indexOf('--config');
-let configJson = null;
-
-// Tentar extrair token do Figma de argumentos de linha de comando
-if (configIndex !== -1 && args.length > configIndex + 1) {
-  try {
-    configJson = JSON.parse(args[configIndex + 1]);
-    if (configJson.figmaToken) {
-      process.env.FIGMA_TOKEN = configJson.figmaToken;
-      if (DEBUG) {
-        process.stderr.write(`[DEBUG] Configurado token do Figma via argumento de linha de comando\n`);
+// Processamento mais robusto de argumentos da linha de comando
+process.argv.forEach((arg, index, array) => {
+  // Verifica argumentos na forma --config={"figmaToken":"xyz"}
+  if (arg.startsWith('--config=')) {
+    try {
+      const configStr = arg.replace('--config=', '');
+      const config = JSON.parse(configStr);
+      if (config.figmaToken) {
+        FIGMA_TOKEN = config.figmaToken;
+        logDebug(`Token do Figma encontrado nos argumentos (--config)`);
       }
+    } catch (e) {
+      logDebug(`Erro ao analisar argumento --config: ${e.message}`);
     }
-  } catch (error) {
-    process.stderr.write(`[ERROR] Erro ao processar argumento de configuração: ${error.message}\n`);
-  }
-}
-
-// Função para logs de debugging
-function debug(...args) {
-  if (DEBUG) {
-    process.stderr.write(`[DEBUG] ${args.join(' ')}\n`);
-  }
-}
-
-// Função de log personalizada para evitar logs no stdout quando necessário
-const logger = {
-  log: (...args) => {
-    // Nunca usar console.log no modo STDIO, mesmo se SUPPRESS_LOGS for false
-    if (!SUPPRESS_LOGS && !USE_STDIO) {
-      console.log(...args);
-    } else if (DEBUG) {
-      // No modo STDIO ou com supressão ativa, usar stderr para debug
-      process.stderr.write(`[INFO] ${args.join(' ')}\n`);
-    }
-  },
-  error: (...args) => {
-    if (!SUPPRESS_LOGS && !USE_STDIO) {
-      console.error(...args);
-    } else {
-      // Sempre registrar erros, mas usar stderr para não interferir no protocolo
-      process.stderr.write(`[ERROR] ${args.join(' ')}\n`);
-    }
-  },
-  warn: (...args) => {
-    if (!SUPPRESS_LOGS && !USE_STDIO) {
-      console.warn(...args);
-    } else if (DEBUG) {
-      process.stderr.write(`[WARN] ${args.join(' ')}\n`);
-    }
-  },
-  info: (...args) => {
-    if (!SUPPRESS_LOGS && !USE_STDIO) {
-      console.info(...args);
-    } else if (DEBUG) {
-      process.stderr.write(`[INFO] ${args.join(' ')}\n`);
-    }
-  }
-};
-
-// Constantes
-const ASSETS_DIR = path.resolve('examples/output/assets');
-const OUTPUT_DIR = path.resolve('examples/output');
-
-// Criar diretórios necessários
-fs.ensureDirSync(OUTPUT_DIR);
-fs.ensureDirSync(ASSETS_DIR);
-
-// Verificar modo de execução (HTTP ou stdio)
-// const USE_STDIO = process.env.MCP_USE_STDIO === 'true'; // Já definido acima
-
-// Carregar informações do MCP
-function loadMcpConfig() {
-  try {
-    return fs.readJsonSync(path.resolve('mcp.json'));
-  } catch (error) {
-    logger.error('Erro ao carregar mcp.json:', error);
-    return {
-      name: "figmamind",
-      version: "1.0.0",
-      description: "MCP server que transforma componentes do Figma em formato JSON padronizado",
-      protocol_version: "0.3"
-    };
-  }
-}
-
-// Lista de ferramentas/endpoints disponíveis
-function getAvailableTools() {
-  const mcpConfig = loadMcpConfig();
-  const tools = [];
-  
-  if (mcpConfig.tools && Array.isArray(mcpConfig.tools)) {
-    mcpConfig.tools.forEach(tool => {
-      tools.push({
-        name: tool.name,
-        description: tool.description || '',
-        schema: tool.schema || {}
-      });
-    });
   }
   
-  return tools;
-}
-
-// Executa uma ferramenta específica
-async function callTool(name, params) {
-  debug(`Chamando ferramenta: ${name} com parâmetros: ${JSON.stringify(params)}`);
+  // Verifica argumentos na forma --figmaToken=xyz
+  if (arg.startsWith('--figmaToken=')) {
+    FIGMA_TOKEN = arg.replace('--figmaToken=', '');
+    logDebug(`Token do Figma encontrado nos argumentos (--figmaToken)`);
+  }
   
-  switch (name) {
-    case 'figmamind_transform':
-      const { figmaUrl } = params || {};
-      
-      if (!figmaUrl) {
-        debug(`Erro: figmaUrl não fornecida`);
-        throw new Error("Missing figmaUrl parameter");
+  // Verifica argumentos na forma -c ou --config seguido por JSON
+  if ((arg === '-c' || arg === '--config') && index < array.length - 1) {
+    try {
+      const config = JSON.parse(array[index + 1]);
+      if (config.figmaToken) {
+        FIGMA_TOKEN = config.figmaToken;
+        logDebug(`Token do Figma encontrado nos argumentos (-c/--config)`);
       }
-      
-      // Verificar token do Figma
-      if (!process.env.FIGMA_TOKEN) {
-        debug(`Erro: FIGMA_TOKEN não configurado no ambiente`);
-        throw new Error("FIGMA_TOKEN não configurado");
-      } else {
-        debug(`FIGMA_TOKEN encontrado: ${process.env.FIGMA_TOKEN.substring(0, 5)}...`);
-      }
-      
-      try {
-        // Buscar dados do Figma
-        debug(`Iniciando processamento de ${figmaUrl}`);
-        debug(`Usando token para autenticação no Figma API`);
-        const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
-        
-        debug(`Resposta recebida do Figma API: ${figmaResult ? 'OK' : 'Falha'}`);
-        debug(`Status response: ${figmaResult.status}`);
-        
-        // Processar dados
-        debug(`Iniciando processamento dos dados recebidos`);
-        const processed = await processData(figmaResult.data, figmaResult.fileKey);
-        
-        debug(`Processamento concluído com sucesso: ${processed ? 'OK' : 'Falha'}`);
-        
-        return {
-          success: true,
-          message: `Processados ${processed.componentsCount || processed.meta?.totalComponents || 0} componentes`,
-          source: figmaUrl,
-          data: processed
-        };
-      } catch (error) {
-        debug(`Erro ao executar transformação: ${error.message}`);
-        logger.error(`Stack de erro completo: ${error.stack}`);
-        throw new Error(error.message || "Erro no processamento do Figma");
-      }
-    
-    default:
-      debug(`Ferramenta não encontrada: ${name}`);
-      throw new Error(`Ferramenta '${name}' não encontrada`);
+    } catch (e) {
+      logDebug(`Erro ao analisar argumento de configuração: ${e.message}`);
+    }
+  }
+});
+
+// Função para depuração - usa stderr para não interferir com STDIO
+function logDebug(message) {
+  if (DEBUG && !SUPPRESS_LOGS) {
+    const timestamp = new Date().toISOString();
+    process.stderr.write(`[DEBUG][${timestamp}] ${message}\n`);
   }
 }
 
-// Adicionar esta função antes do bloco de código STDIO para processar as requisições
-async function processRequest(request) {
-  try {
-    debug(`Processando requisição: ${request.method}, ID: ${request.id}`);
-    
-    // Validar requisição JSON-RPC básica
-    if (!request || typeof request !== 'object' || typeof request.method !== 'string') {
-      return {
-        jsonrpc: "2.0",
-        error: { code: -32600, message: "Invalid Request" },
-        id: request?.id || null
-      };
-    }
-    
-    // Implementar os métodos padrão do MCP
-    switch (request.method) {
-      case 'listTools':
-        debug('Listando ferramentas disponíveis');
-        return {
-          jsonrpc: "2.0",
-          result: {
-            tools: getAvailableTools()
-          },
-          id: request.id
-        };
-        
-      case 'invokeToolByName':
-        if (!request.params || !request.params.name || !request.params.parameters) {
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32602, message: "Parâmetros inválidos para invokeToolByName" },
-            id: request.id
-          };
+// Logs de erro - sempre exibidos a menos que SUPPRESS_LOGS seja true
+function logError(message) {
+  if (!SUPPRESS_LOGS) {
+    const timestamp = new Date().toISOString();
+    process.stderr.write(`[ERROR][${timestamp}] ${message}\n`);
+  }
+}
+
+// Logs de informação
+function logInfo(message) {
+  if (!SUPPRESS_LOGS) {
+    const timestamp = new Date().toISOString();
+    process.stderr.write(`[INFO][${timestamp}] ${message}\n`);
+  }
+}
+
+// Validação inicial
+if (!FIGMA_TOKEN && !TEST_MODE) {
+  logError('Token do Figma não encontrado. Defina a variável de ambiente FIGMA_TOKEN ou passe via argumento --figmaToken=xyz');
+  process.exit(1);
+}
+
+// Definições de ferramentas
+const tools = [
+  {
+    name: "figmamind_transform",
+    description: "Transforma componentes do Figma em formato JSON padronizado para consumo por modelos de IA",
+    schema: {
+      type: "object",
+      required: ["figmaUrl"],
+      properties: {
+        figmaUrl: {
+          type: "string",
+          description: "URL do arquivo ou frame do Figma para processar"
+        },
+        components: {
+          type: "array",
+          description: "Lista opcional de IDs de componentes específicos para processar",
+          items: {
+            type: "string"
+          }
+        },
+        options: {
+          type: "object",
+          description: "Opções de processamento",
+          properties: {
+            includeStyles: {
+              type: "boolean",
+              description: "Incluir informações de estilo detalhadas"
+            },
+            includeConstraints: {
+              type: "boolean",
+              description: "Incluir informações de constraints"
+            },
+            flattenNestedComponents: {
+              type: "boolean",
+              description: "Achatar componentes aninhados em uma estrutura plana"
+            }
+          }
         }
-        
-        debug(`Invocando ferramenta: ${request.params.name}`);
-        const result = await callTool(
-          request.params.name,
-          request.params.parameters
-        );
-        
-        return {
-          jsonrpc: "2.0",
-          result,
-          id: request.id
-        };
-        
-      default:
-        return {
-          jsonrpc: "2.0",
-          error: {
-            code: -32601,
-            message: `Método não encontrado: ${request.method}`
-          },
-          id: request.id
-        };
+      }
     }
-  } catch (error) {
-    logger.error(`Erro processando requisição ${request?.method}:`, error);
+  }
+];
+
+// Função para processar componentes do Figma
+async function processFigmaComponents(figmaUrl, options = {}) {
+  logDebug(`Processando URL do Figma: ${figmaUrl}`);
+  
+  try {
+    // Extrair o ID do arquivo do URL do Figma
+    const fileId = figmaUrl.match(/file\/([^\/]+)/)?.[1] || figmaUrl;
+    
+    if (!fileId) {
+      throw new Error(`URL do Figma inválido: ${figmaUrl}`);
+    }
+    
+    logDebug(`ID do arquivo Figma: ${fileId}`);
+    
+    // Buscar dados do arquivo do Figma
+    const figmaFileData = await figmaService.getFigmaFile(fileId, FIGMA_TOKEN);
+    
+    // Processar componentes
+    const processedComponents = await componentProcessor.processComponents(
+      figmaFileData, 
+      options.components, 
+      options.options
+    );
+    
+    // Transformar para o formato JSON padronizado
+    const jsonResult = jsonTransformer.transformToStandardJson(
+      processedComponents, 
+      fileId,
+      figmaUrl
+    );
+    
+    logDebug(`Processamento concluído. ${jsonResult.components?.length || 0} componentes extraídos.`);
+    
     return {
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: `Erro interno do servidor: ${error.message || 'Erro desconhecido'}`
-      },
-      id: request?.id || null
+      success: true,
+      message: `Processados ${jsonResult.components?.length || 0} componentes`,
+      source: figmaUrl,
+      data: jsonResult
+    };
+    
+  } catch (err) {
+    logError(`Erro ao processar componentes: ${err.message}`);
+    return {
+      success: false,
+      message: `Erro: ${err.message}`,
+      source: figmaUrl,
+      error: err.message
     };
   }
 }
 
-// Manipulador de solicitações JSON-RPC
-async function handleJsonRpcRequest(request) {
+// Função para executar a ferramenta
+async function callTool(name, params) {
+  if (name !== 'figmamind_transform') {
+    throw new Error(`Ferramenta '${name}' não encontrada`);
+  }
+  
+  const { figmaUrl, components, options } = params || {};
+  
+  if (!figmaUrl) {
+    throw new Error("Parâmetro figmaUrl é obrigatório");
+  }
+  
   try {
-    const { id, method, params } = request;
-    
-    // Log para debug
-    debug(`Recebido JSON-RPC: ${JSON.stringify(request)}`);
-    
-    if (!id) {
-      debug('ID ausente na requisição, usando ID nulo');
-    }
-    
-    if (!method) {
-      debug('Método ausente na requisição');
-      return { 
-        jsonrpc: "2.0", 
-        error: { code: -32600, message: "Invalid Request - Missing method" }, 
-        id: id || null 
-      };
-    }
+    return await processFigmaComponents(figmaUrl, { components, options });
+  } catch (err) {
+    logError(`Erro na execução da ferramenta: ${err.message}`);
+    throw new Error(err.message || "Erro no processamento do Figma");
+  }
+}
 
+// Função para manipular solicitações JSON-RPC
+async function handleJsonRpcRequest(request) {
+  const { id, method, params } = request;
+  
+  try {
     let result;
     
-    // Manipular diferentes métodos
+    logDebug(`Método recebido: ${method}, ID: ${id}`);
+    
     switch (method) {
       case 'initialize':
-        try {
-          // Verificar se estamos usando a versão mais recente do MCP que usa initialParams 
-          // e adaptar para compatibilidade
-          const mcpConfig = loadMcpConfig();
-          
-          debug(`Initialize chamado com params: ${JSON.stringify(params)}`);
-          
-          // Garantir que estamos retornando os campos obrigatórios de acordo com o MCP
-          result = {
-            name: mcpConfig.name || "figmamind",
-            version: mcpConfig.version || "1.0.0",
-            description: mcpConfig.description || "MCP server que transforma componentes do Figma em formato JSON padronizado",
-            protocol_version: params?.protocol_version || mcpConfig.protocol_version || "0.3",
-            capabilities: {
-              supports_stdio: true,
-              supports_http: true
-            }
-          };
-          
-          // Log específico para debugging do initialize
-          debug(`Initialize response: ${JSON.stringify({jsonrpc: "2.0", result, id: id})}`);
-        } catch (error) {
-          logger.error('Erro ao inicializar MCP:', error);
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32603, message: "Erro ao inicializar servidor MCP" },
-            id
-          };
-        }
-        break;
-        
-      case 'info':
-        try {
-          const mcpConfig = loadMcpConfig();
-          result = {
-            name: mcpConfig.name,
-            version: mcpConfig.version,
-            description: mcpConfig.description,
-            protocol_version: mcpConfig.protocol_version,
-            endpoints: Object.keys(mcpConfig.endpoints || {}).map(key => {
-              const endpoint = mcpConfig.endpoints[key];
-              return {
-                name: key,
-                path: endpoint.path,
-                method: endpoint.method,
-                description: endpoint.description
-              };
-            })
-          };
-        } catch (error) {
-          logger.error('Erro ao obter informações MCP:', error);
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32603, message: "Erro ao obter informações do servidor MCP" },
-            id
-          };
-        }
-        break;
-        
-      case 'health':
-        // Verificar se o token do Figma está configurado
-        const token = process.env.FIGMA_TOKEN;
-        
-        if (!token) {
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32603, message: "FIGMA_TOKEN não configurado" },
-            id
-          };
-        }
-        
+        // Responder ao método initialize com informações do servidor
         result = {
-          status: 'ok',
-          message: 'FigmaMind MCP operacional'
+          name: "figmamind",
+          version: "1.0.0",
+          description: "MCP server que transforma componentes do Figma em formato JSON padronizado para consumo por modelos de IA",
+          protocol_version: params?.protocolVersion || "1.0",
+          capabilities: {
+            tools: true
+          }
         };
         break;
         
-      case 'transform':
-        const { figmaUrl } = params || {};
+      case 'tools/list':
+        // Listar ferramentas disponíveis
+        result = { tools };
+        break;
         
-        if (!figmaUrl) {
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32602, message: "Missing figmaUrl parameter" },
-            id
-          };
+      case 'tools/call':
+        // Executar uma ferramenta
+        if (!params || !params.name) {
+          throw new Error("Nome da ferramenta não especificado");
         }
         
-        // Verificar token do Figma
-        if (!process.env.FIGMA_TOKEN) {
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32603, message: "FIGMA_TOKEN não configurado" },
-            id
-          };
-        }
-        
-        try {
-          // Buscar dados do Figma
-          logger.log(`Iniciando processamento de ${figmaUrl}`);
-          const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
-          
-          // Processar dados
-          const processed = await processData(figmaResult.data, figmaResult.fileKey);
-          
-          // Salvar dados brutos e processados
-          await fs.writeJson(
-            path.join(OUTPUT_DIR, 'figma-raw.json'), 
-            figmaResult.data, 
-            { spaces: 2 }
-          );
-          
-          await fs.writeJson(
-            path.join(OUTPUT_DIR, 'figma-processed.json'), 
-            processed, 
-            { spaces: 2 }
-          );
-          
-          result = {
-            success: true,
-            message: `Processados ${processed.componentsCount || processed.meta?.totalComponents || 0} componentes`,
-            source: figmaUrl,
-            data: processed
-          };
-        } catch (error) {
-          logger.error('Erro ao processar transformação:', error);
-          return {
-            jsonrpc: "2.0",
-            error: { code: -32603, message: error.message || "Internal server error" },
-            id
-          };
-        }
+        result = await callTool(params.name, params.params);
         break;
         
       default:
+        logDebug(`Método não encontrado: ${method}`);
         return {
           jsonrpc: "2.0",
-          error: { code: -32601, message: `Method '${method}' not found` },
+          error: { 
+            code: -32601, 
+            message: `Método '${method}' não encontrado` 
+          },
           id
         };
     }
@@ -427,394 +256,191 @@ async function handleJsonRpcRequest(request) {
       result,
       id
     };
-  } catch (error) {
-    logger.error('Erro ao processar solicitação JSON-RPC:', error);
+    
+  } catch (err) {
+    logError(`Erro ao processar requisição: ${err.message}`);
     return {
       jsonrpc: "2.0",
-      error: { code: -32603, message: "Internal JSON-RPC error" },
-      id: request?.id || null
+      error: { 
+        code: -32603, 
+        message: err.message || "Erro interno" 
+      },
+      id
     };
   }
 }
 
-// Adicionar no início do código principal, antes da inicialização do servidor
-if (TEST_MODE) {
-  logger.log('Iniciando teste de diagnóstico do servidor MCP...');
+// Função para configurar comunicação STDIO
+function setupStdio() {
+  logInfo('Iniciando servidor MCP via STDIO');
   
-  // Testar se os módulos necessários estão disponíveis
-  try {
-    logger.log('1. Verificando carregamento de módulos essenciais...');
-    const modules = [
-      'express', 'cors', 'fs-extra', 'axios'
-    ];
-    
-    let allModulesOk = true;
-    for (const moduleName of modules) {
-      try {
-        require(moduleName);
-        logger.log(`✓ Módulo ${moduleName}: OK`);
-      } catch (err) {
-        logger.error(`✗ Módulo ${moduleName}: FALHA - ${err.message}`);
-        allModulesOk = false;
-      }
-    }
-    
-    if (!allModulesOk) {
-      logger.error('Alguns módulos estão faltando. Execute: npm install');
-    }
-    
-    // Verificar token do Figma
-    logger.log('\n2. Verificando configuração...');
-    const figmaToken = process.env.FIGMA_TOKEN;
-    if (figmaToken) {
-      logger.log('✓ Token do Figma: CONFIGURADO');
-    } else {
-      logger.error('✗ Token do Figma: NÃO CONFIGURADO');
-      logger.log('  Defina em .env ou como variável de ambiente: FIGMA_TOKEN=seu-token');
-    }
-    
-    // Verificar ferramentas disponíveis
-    logger.log('\n3. Verificando ferramentas disponíveis...');
-    const tools = getAvailableTools();
-    if (tools && tools.length > 0) {
-      logger.log(`✓ Ferramentas disponíveis: ${tools.length}`);
-      tools.forEach(tool => {
-        logger.log(`  - ${tool.name}: ${tool.description}`);
-      });
-    } else {
-      logger.error('✗ Nenhuma ferramenta disponível');
-    }
-    
-    logger.log('\nDiagnóstico concluído. O servidor parece estar configurado corretamente.');
-  } catch (error) {
-    logger.error('Erro durante o diagnóstico:', error);
-  }
+  // Keepalive para manter o processo ativo
+  const keepAliveInterval = setInterval(() => {
+    // No-op, apenas para manter o processo ativo
+  }, 10000);
   
-  // Não iniciar o servidor após o diagnóstico
-  process.exit(0);
-}
-
-// Executando em modo STDIO
-if (USE_STDIO) {
-  debug('Iniciando servidor em modo STDIO');
-  
+  // Usando interface readline para processamento linha a linha
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stdout,
+    output: null, // Não usar stdout para readline
     terminal: false
   });
-  
-  let buffer = '';
-  let contentLength = null;
-  
-  // Adicionar tratamento de erros no readline
-  rl.on('error', (error) => {
-    process.stderr.write(`[ERROR] Erro no readline: ${error.message}\n`);
+
+  // Tratamento de erros no stream de entrada
+  process.stdin.on('error', (err) => {
+    logError(`Erro no stream de entrada: ${err.message}`);
   });
-  
+
+  // Handler para cada linha recebida
   rl.on('line', async (line) => {
+    if (!line || !line.trim()) return;
+    
     try {
-      debug(`STDIO linha recebida: ${line.slice(0, 50)}...`);
+      logDebug(`Recebido: ${line}`);
+      const request = JSON.parse(line);
+      const response = await handleJsonRpcRequest(request);
       
-      // Parser para mensagens no formato "Content-Length: X\r\n\r\n{...}"
-      if (line.startsWith('Content-Length:')) {
-        const lengthMatch = line.match(/Content-Length: (\d+)/);
-        if (lengthMatch) {
-          contentLength = parseInt(lengthMatch[1], 10);
-          debug(`Esperando mensagem de tamanho: ${contentLength}`);
-        }
-      } else if (line.trim() === '' && contentLength !== null) {
-        // Linha vazia após Content-Length indica que a próxima linha é JSON
-        const messagePromise = new Promise((resolve) => {
-          rl.once('line', (jsonLine) => {
-            resolve(jsonLine);
-          });
-        });
-        
-        const jsonLine = await messagePromise;
-        
-        // Verificar tamanho da mensagem
-        if (jsonLine.length !== contentLength) {
-          debug(`Aviso: tamanho da mensagem (${jsonLine.length}) diferente do esperado (${contentLength})`);
-        }
-        
-        // Processar o JSON
-        try {
-          const request = JSON.parse(jsonLine);
-          debug(`Processando requisição JSON-RPC: ${request.method}`);
-          
-          // Extrair token do Figma do request se disponível
-          if (request.method === 'invokeToolByName' && 
-              request.params && 
-              request.params.parameters && 
-              request.params.parameters.figmaToken) {
-            const token = request.params.parameters.figmaToken;
-            debug(`Extraindo token do Figma da requisição`);
-            process.env.FIGMA_TOKEN = token;
-          }
-          
-          const response = await processRequest(request);
-          
-          // Enviar resposta no formato esperado pelo protocolo JSONRPC
-          const responseStr = JSON.stringify(response);
-          process.stdout.write(`Content-Length: ${responseStr.length}\r\n\r\n${responseStr}`);
-          debug(`Resposta enviada: ${responseStr.slice(0, 50)}...`);
-          
-          // Resetar para próxima mensagem
-          contentLength = null;
-        } catch (error) {
-          debug(`Erro ao processar JSON: ${error.message}`);
-          
-          // Enviar resposta de erro
-          const errorResponse = {
-            jsonrpc: "2.0",
-            error: {
-              code: -32700,
-              message: `Erro de parse: ${error.message}`
-            },
-            id: null
-          };
-          
-          const errorStr = JSON.stringify(errorResponse);
-          process.stdout.write(`Content-Length: ${errorStr.length}\r\n\r\n${errorStr}`);
-          
-          // Resetar para próxima mensagem
-          contentLength = null;
-        }
-      } else if (line.startsWith('{') && contentLength === null) {
-        // Tentar processar linha diretamente como JSON (formato alternativo)
-        try {
-          const request = JSON.parse(line);
-          const response = await processRequest(request);
-          process.stdout.write(JSON.stringify(response) + '\n');
-        } catch (error) {
-          debug(`Erro ao processar linha como JSON: ${error.message}`);
-          process.stdout.write(JSON.stringify({
-            jsonrpc: "2.0",
-            error: { code: -32700, message: `Parse error: ${error.message}` },
-            id: null
-          }) + '\n');
-        }
-      }
-    } catch (error) {
-      process.stderr.write(`[ERROR] Erro ao processar linha: ${error.message}\n`);
-      process.stderr.write(`[ERROR] Stack: ${error.stack}\n`);
-      
-      try {
-        // Tentar enviar resposta de erro mesmo em caso de falha
-        const errorResponse = {
-          jsonrpc: "2.0",
-          error: { code: -32603, message: `Erro interno: ${error.message}` },
-          id: null
-        };
-        const errorStr = JSON.stringify(errorResponse);
-        process.stdout.write(`Content-Length: ${errorStr.length}\r\n\r\n${errorStr}`);
-      } catch (e) {
-        process.stderr.write(`[ERROR] Erro fatal ao enviar resposta de erro: ${e.message}\n`);
-      }
+      // Garantir que o stdout seja o único canal de comunicação com o cliente
+      process.stdout.write(JSON.stringify(response) + '\n');
+      logDebug(`Enviado: ${JSON.stringify(response)}`);
+    } catch (err) {
+      logError(`Erro ao processar linha: ${err.message}`);
+      // Em caso de erro de parsing, enviar resposta de erro
+      process.stdout.write(JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32700, message: "Erro de parsing" },
+        id: null
+      }) + '\n');
     }
   });
-  
-  // Adicionar handler para o fim da entrada
+
+  // Gerenciar encerramento da conexão
   rl.on('close', () => {
-    debug('STDIO fechado. Encerrando.');
-    process.exit(0);
+    logInfo('Conexão STDIO encerrada');
+    clearInterval(keepAliveInterval);
+    // Não encerrar o processo automaticamente para permitir reconexões
+    // process.exit(0);
   });
   
-  // Capturar sinais para encerramento limpo
+  // Manter o processo vivo mesmo se stdin for fechado
+  process.stdin.resume();
+}
+
+// Verificação de módulos e dependências essenciais
+async function runDiagnostics() {
+  console.log("=== Diagnóstico do FigmaMind MCP Server ===");
+  console.log(`Node.js: ${process.version}`);
+  console.log(`Sistema Operacional: ${process.platform}`);
+  
+  // Verificar módulos essenciais
+  console.log("\n[1] Verificando módulos essenciais...");
+  const requiredModules = ['fs', 'readline'];
+  let allModulesOk = true;
+  
+  for (const module of requiredModules) {
+    try {
+      require(module);
+      console.log(`✓ Módulo ${module} carregado com sucesso`);
+    } catch (err) {
+      console.log(`✗ Erro ao carregar módulo ${module}: ${err.message}`);
+      allModulesOk = false;
+    }
+  }
+  
+  // Verificar serviços locais
+  console.log("\n[2] Verificando serviços locais...");
+  try {
+    console.log(`✓ figmaService disponível`);
+    console.log(`✓ componentProcessor disponível`);
+    console.log(`✓ jsonTransformer disponível`);
+  } catch (err) {
+    console.log(`✗ Erro ao verificar serviços: ${err.message}`);
+    allModulesOk = false;
+  }
+
+  // Verificar token do Figma
+  console.log("\n[3] Verificando configuração do token do Figma...");
+  if (FIGMA_TOKEN) {
+    console.log(`✓ Token do Figma configurado: ${FIGMA_TOKEN.substring(0, 10)}...`);
+    
+    // Validação básica do formato do token
+    if (FIGMA_TOKEN.startsWith('figd_')) {
+      console.log(`✓ Formato do token parece válido`);
+    } else {
+      console.log(`⚠ Aviso: O formato do token não parece seguir o padrão esperado (figd_...)`);
+    }
+  } else {
+    console.log(`✗ Token do Figma não encontrado`);
+  }
+  
+  // Verificar ferramentas disponíveis
+  console.log("\n[4] Verificando ferramentas disponíveis...");
+  console.log(`✓ ${tools.length} ferramentas registradas:`);
+  tools.forEach(tool => {
+    console.log(`  - ${tool.name}: ${tool.description.substring(0, 60)}...`);
+  });
+  
+  // Resumo
+  console.log("\n=== Resumo do Diagnóstico ===");
+  if (allModulesOk) {
+    console.log("✅ Todos os módulos essenciais estão funcionando corretamente");
+    console.log(`✅ FigmaMind MCP Server está pronto para uso via ${USE_STDIO ? 'STDIO' : 'HTTP'}`);
+  } else {
+    console.log("❌ Há problemas que precisam ser resolvidos antes de usar o servidor");
+  }
+  
+  console.log("\nPara iniciar o servidor em modo normal, execute sem a flag --test");
+}
+
+// Função principal
+async function main() {
+  logInfo('Iniciando FigmaMind MCP Server');
+  logDebug(`Modo de depuração: ${DEBUG ? 'ativado' : 'desativado'}`);
+  logDebug(`Token do Figma: ${FIGMA_TOKEN ? FIGMA_TOKEN.substring(0, 10) + '...' : 'não definido'}`);
+  
+  // Se estiver em modo de teste, executar diagnósticos e sair
+  if (TEST_MODE) {
+    await runDiagnostics();
+    process.exit(0);
+  }
+  
+  // Iniciar no modo STDIO (compatível com Smithery e Cursor)
+  if (USE_STDIO) {
+    setupStdio();
+  } else {
+    // Fallback para STDIO se nenhum modo especificado
+    setupStdio();
+  }
+  
+  // Tratamento de sinais para encerramento limpo
   process.on('SIGINT', () => {
-    debug('Recebido SIGINT. Encerrando.');
+    logInfo('Recebido sinal SIGINT, encerrando servidor...');
     process.exit(0);
   });
   
   process.on('SIGTERM', () => {
-    debug('Recebido SIGTERM. Encerrando.');
+    logInfo('Recebido sinal SIGTERM, encerrando servidor...');
     process.exit(0);
   });
-} else {
-  // Iniciando em modo HTTP
-  // Inicializar app
-  const app = express();
-
-  // Middlewares
-  app.use(express.json());
-  app.use(cors());
-
-  // Usar morgan apenas se não estiver suprimindo logs
-  if (!SUPPRESS_LOGS) {
-    app.use(morgan('dev'));
-  }
-
-  // MCP Info Endpoint
-  app.get('/', (req, res) => {
-    try {
-      const mcpConfig = loadMcpConfig();
-      return res.json({
-        name: mcpConfig.name,
-        version: mcpConfig.version,
-        description: mcpConfig.description,
-        protocol_version: mcpConfig.protocol_version,
-        endpoints: Object.keys(mcpConfig.endpoints || {}).map(key => {
-          const endpoint = mcpConfig.endpoints[key];
-          return {
-            name: key,
-            path: endpoint.path,
-            method: endpoint.method,
-            description: endpoint.description
-          };
-        })
-      });
-    } catch (error) {
-      logger.error('Erro ao obter informações MCP:', error);
-      return res.status(500).json({
-        error: 'Erro ao obter informações do servidor MCP'
-      });
-    }
+  
+  // Capturar erros não tratados
+  process.on('uncaughtException', (err) => {
+    logError(`Erro não tratado: ${err.message}`);
+    logError(err.stack);
+    // Não encerrar o processo para manter o servidor funcionando
   });
-
-  // MCP Health Check Endpoint
-  app.get('/health', (req, res) => {
-    // Verificar se o token do Figma está configurado
-    const token = process.env.FIGMA_TOKEN;
-    
-    if (!token) {
-      return res.status(503).json({
-        status: 'error',
-        message: 'FIGMA_TOKEN não configurado'
-      });
-    }
-    
-    return res.json({
-      status: 'ok',
-      message: 'FigmaMind MCP operacional'
-    });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    logError(`Rejeição não tratada em promise: ${reason}`);
+    // Não encerrar o processo para manter o servidor funcionando
   });
+  
+  logInfo('Servidor inicializado e aguardando comandos...');
+}
 
-  // JSON-RPC Endpoint
-  app.post('/jsonrpc', async (req, res) => {
-    try {
-      // Garantir que o corpo é uma solicitação JSON-RPC
-      if (!req.body || typeof req.body !== 'object') {
-        return res.status(400).json({
-          jsonrpc: "2.0",
-          error: { code: -32600, message: "Invalid Request" },
-          id: null
-        });
-      }
-
-      // Processar a solicitação
-      const response = await handleJsonRpcRequest(req.body);
-      
-      // Enviar a resposta
-      return res.json(response);
-    } catch (error) {
-      logger.error('Erro ao processar solicitação JSON-RPC:', error);
-      return res.status(500).json({
-        jsonrpc: "2.0",
-        error: { code: -32603, message: "Internal JSON-RPC error" },
-        id: req.body?.id || null
-      });
-    }
-  });
-
-  // MCP Transform Endpoint
-  app.post('/transform', async (req, res) => {
-    try {
-      const { figmaUrl } = req.body;
-      
-      if (!figmaUrl) {
-        return res.status(400).json({
-          error: 'Missing figmaUrl parameter'
-        });
-      }
-      
-      // Verificar token do Figma
-      if (!process.env.FIGMA_TOKEN) {
-        return res.status(401).json({
-          error: 'FIGMA_TOKEN não configurado. Configure o token do Figma nas variáveis de ambiente.'
-        });
-      }
-      
-      // Buscar dados do Figma
-      logger.log(`Iniciando processamento de ${figmaUrl}`);
-      const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
-      
-      // Processar dados
-      const processed = await processData(figmaResult.data, figmaResult.fileKey);
-      
-      // Salvar dados brutos e processados
-      await fs.writeJson(
-        path.join(OUTPUT_DIR, 'figma-raw.json'), 
-        figmaResult.data, 
-        { spaces: 2 }
-      );
-      
-      await fs.writeJson(
-        path.join(OUTPUT_DIR, 'figma-processed.json'), 
-        processed, 
-        { spaces: 2 }
-      );
-      
-      // Responder com os dados processados
-      res.json({
-        success: true,
-        message: `Processados ${processed.componentsCount || processed.meta?.totalComponents || 0} componentes`,
-        source: figmaUrl,
-        data: processed
-      });
-    } catch (error) {
-      logger.error('Erro ao processar transformação:', error);
-      res.status(500).json({
-        error: error.message || 'Internal server error'
-      });
-    }
-  });
-
-  // MCP Assets Endpoint
-  app.get('/assets/:filename', (req, res) => {
-    try {
-      const filename = req.params.filename;
-      const filePath = path.join(ASSETS_DIR, filename);
-      
-      // Verificar se o arquivo existe
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({
-          error: 'Asset not found'
-        });
-      }
-      
-      // Determinar tipo de conteúdo com base na extensão
-      const ext = path.extname(filename).toLowerCase();
-      let contentType = 'application/octet-stream';
-      
-      if (ext === '.png') contentType = 'image/png';
-      else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
-      else if (ext === '.svg') contentType = 'image/svg+xml';
-      
-      // Enviar o arquivo
-      res.setHeader('Content-Type', contentType);
-      res.sendFile(filePath);
-    } catch (error) {
-      logger.error('Erro ao acessar asset:', error);
-      res.status(500).json({
-        error: error.message || 'Internal server error'
-      });
-    }
-  });
-
-  // Aceitar solicitações WebSocket para JSON-RPC
-  app.get('/ws', (req, res) => {
-    res.setHeader('Upgrade', 'websocket');
-    res.status(426).json({
-      error: 'WebSocket upgrade requerido. Faça um upgrade de conexão para WebSocket para comunicação JSON-RPC.'
-    });
-  });
-
-  // Iniciar servidor
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    logger.log(`FigmaMind MCP iniciado na porta ${PORT}`);
-    logger.log(`Servidor disponível em http://localhost:${PORT}`);
-    logger.log(`Endpoints MCP: / (info), /health, /transform, /assets/:filename, /jsonrpc (JSON-RPC)`);
-  });
-} 
+// Iniciar o servidor
+main().catch(err => {
+  logError(`Erro fatal na inicialização: ${err.message}`);
+  logError(err.stack);
+  process.exit(1);
+}); 

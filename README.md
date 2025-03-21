@@ -353,3 +353,157 @@ npx @smithery/cli@latest list
 ```
 
 Lembre-se de reiniciar o Cursor após fazer alterações nas configurações para que elas entrem em vigor. 
+
+# FigmaMind MCP Server
+
+Servidor MCP (Model Context Protocol) para extrair componentes do Figma e convertê-los para um formato JSON padronizado, ideal para consumo em modelos de IA e outras ferramentas.
+
+## Requisitos
+
+- Node.js 18.x ou superior (recomendado 20.x)
+- Token de acesso à API do Figma
+
+## Instalação
+
+### Via Smithery (recomendado)
+
+```bash
+# Instalação no Claude Desktop
+npx -y @smithery/cli@latest install @joao-loker/figmamind --client claude --config "{\"figmaToken\":\"seu_token_aqui\"}"
+
+# Instalação no Cursor
+npx -y @smithery/cli@latest install @joao-loker/figmamind --client cursor --config "{\"figmaToken\":\"seu_token_aqui\"}"
+```
+
+### Instalação manual
+
+1. Clone o repositório e instale as dependências:
+
+```bash
+git clone https://github.com/joao-loker/figmamind.git
+cd figmamind
+npm install
+```
+
+2. Defina seu token do Figma:
+
+```bash
+# Linux/macOS
+export FIGMA_TOKEN="seu_token_aqui"
+
+# Windows (cmd)
+set FIGMA_TOKEN=seu_token_aqui
+
+# Windows (PowerShell)
+$env:FIGMA_TOKEN="seu_token_aqui"
+```
+
+3. Inicie o servidor MCP:
+
+```bash
+# Para Node.js 20.x (recomendado)
+./start-with-node20.sh
+
+# Ou diretamente
+node mcp-server.js
+```
+
+## Configuração para Cursor
+
+Se você quiser usar o FigmaMind diretamente no Cursor sem usar o Smithery, você pode configurar manualmente o arquivo de configuração MCP:
+
+```json
+{
+  "mcpServers": {
+    "figmamind": {
+      "command": "node",
+      "args": ["/caminho/para/FigmaMind/mcp-server.js"],
+      "env": {
+        "FIGMA_TOKEN": "seu_token_aqui",
+        "MCP_DEBUG": "true",
+        "MCP_USE_STDIO": "true",
+        "NODE_OPTIONS": "--no-experimental-fetch"
+      }
+    }
+  }
+}
+```
+
+O arquivo está localizado em:
+- macOS: `~/Library/Application Support/Cursor/User/globalStorage/anysphere.claude-mcp/cline_mcp_settings.json`
+- Windows: `%APPDATA%\Cursor\User\globalStorage\anysphere.claude-mcp\cline_mcp_settings.json`
+- Linux: `~/.config/Cursor/User/globalStorage/anysphere.claude-mcp/cline_mcp_settings.json`
+
+## Uso
+
+Uma vez configurado, o serviço ficará disponível no Claude Desktop ou Cursor como uma ferramenta chamada "figmamind_transform".
+
+Exemplo de uso via Claude:
+
+```
+Quero transformar este design do Figma em componentes: https://www.figma.com/file/seu_arquivo_aqui
+```
+
+## Parâmetros
+
+A ferramenta aceita os seguintes parâmetros:
+
+- `figmaUrl`: URL ou ID do arquivo do Figma (obrigatório)
+- `components`: Lista de IDs de componentes específicos para processar (opcional)
+- `options`: Opções de processamento (opcional)
+  - `includeStyles`: Incluir informações detalhadas de estilo
+  - `includeConstraints`: Incluir informações de constraints
+  - `flattenNestedComponents`: Achatar componentes aninhados em uma estrutura plana
+
+## Troubleshooting
+
+### Erro "Failed to create client"
+
+Este erro pode ocorrer por diversos motivos:
+
+1. **Versão incompatível do Node.js**:
+   - Certifique-se de estar usando Node.js versão 18.x ou 20.x
+   - O Node.js 23.x pode causar problemas de compatibilidade com o Cursor
+
+2. **Problema com o Figma Token**:
+   - Verifique se o token começa com `figd_`
+   - Confirme que o token tem permissões de acesso aos arquivos do Figma
+   - Tente gerar um novo token na interface do Figma
+
+3. **Erro "Client closed"**:
+   - **Problema**: Este erro ocorre quando o Cursor não consegue manter uma conexão estável com o servidor MCP
+   - **Solução 1**: Adicione a variável de ambiente `NODE_OPTIONS="--no-experimental-fetch"` nas configurações do MCP no Cursor
+   - **Solução 2**: Verifique se você está usando um comando direto (e não NPX) para iniciar o servidor
+   - **Solução 3**: Reinicie o Cursor após modificar as configurações
+   - **Solução 4**: Use o script `start-with-node20.sh` para garantir a compatibilidade de versão
+
+4. **Script de diagnóstico**:
+   
+   Para verificar se o servidor está configurado corretamente:
+   
+   ```bash
+   node mcp-server.js --test
+   ```
+
+### Comandos úteis para diagnóstico
+
+```bash
+# Verificar versão do Node.js
+node --version
+
+# Testar servidor MCP
+node mcp-server.js --test
+
+# Verificar se o token do Figma é válido
+curl -H "X-Figma-Token: seu_token_aqui" https://api.figma.com/v1/me
+```
+
+## Desenvolvimento
+
+Para contribuir com o desenvolvimento:
+
+1. Clone o repositório
+2. Instale as dependências com `npm install`
+3. Faça suas alterações
+4. Execute os testes com `npm test`
+5. Envie um pull request 
