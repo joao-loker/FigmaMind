@@ -95,6 +95,34 @@ Você pode usar o FigmaMind diretamente através da CLI do Smithery:
 npx @smithery/cli@latest run @joao-loker/figmamind --config '{"figmaToken":"seu-token-do-figma"}'
 ```
 
+### Uso via SDK do Smithery
+
+Você também pode usar o FigmaMind através do SDK do Smithery em suas aplicações JavaScript:
+
+```javascript
+import { createTransport } from "@smithery/sdk/transport.js"
+
+const transport = createTransport("https://server.smithery.ai/@joao-loker/figmamind", {
+  "figmaToken": "seu-token-do-figma"
+})
+
+// Create MCP client
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+
+const client = new Client({
+  name: "Test client",
+  version: "1.0.0"
+})
+await client.connect(transport)
+
+// Use the server tools with your LLM application
+const tools = await client.listTools()
+console.log(`Available tools: ${tools.map(t => t.name).join(", ")}`)
+
+// Example: Call a tool
+// const result = await client.callTool("figmamind_transform", { figmaUrl: "https://www.figma.com/file/..." })
+```
+
 ### Integração com o Cursor
 
 Para integrar o FigmaMind no Cursor via Smithery, adicione a seguinte configuração ao arquivo `~/.cursor/mcp.json`:
@@ -128,6 +156,25 @@ Para usar com uma API key do Smithery:
     "--config",
     "{\"figmaToken\":\"seu-token-do-figma\"}"
   ]
+}
+```
+
+### Esquema de Configuração
+
+Esquema JSON completo para a configuração do servidor:
+
+```json
+{
+  "type": "object",
+  "required": [
+    "figmaToken"
+  ],
+  "properties": {
+    "figmaToken": {
+      "type": "string",
+      "description": "Token de acesso à API do Figma"
+    }
+  }
 }
 ```
 

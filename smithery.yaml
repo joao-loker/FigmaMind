@@ -1,4 +1,3 @@
-<<<<<<< smithery/config-3rjy
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
 
 startCommand:
@@ -24,6 +23,6 @@ startCommand:
         MCP_USE_STDIO: "true"
       }
     })
-=======
 
->>>>>>> main
+build:
+  dockerfile: "Dockerfile"
