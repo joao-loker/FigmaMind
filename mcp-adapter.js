@@ -11,6 +11,7 @@ const fs = require('fs');
 // Configurações
 const DEBUG = true;
 const LOG_FILE = path.join(__dirname, 'logs', 'mcp-adapter.log');
+const SERVER_PATH = path.join(__dirname, 'mcp-server.js');
 
 // Criar pasta de logs se não existir
 try {
@@ -37,9 +38,10 @@ function log(message) {
 }
 
 log('Iniciando MCP Adapter para FigmaMind');
+log(`Caminho do servidor: ${SERVER_PATH}`);
 
 // Iniciar o processo filho (servidor MCP)
-const mcpProcess = spawn('node', ['mcp-server.js'], {
+const mcpProcess = spawn('node', [SERVER_PATH], {
   env: {
     ...process.env,
     MCP_USE_STDIO: 'true',
