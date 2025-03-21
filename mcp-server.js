@@ -276,7 +276,11 @@ async function handleJsonRpcRequest(request) {
 
 // Iniciar modo stdio se necessário
 if (USE_STDIO) {
-  logger.log('Iniciando FigmaMind MCP no modo stdio...');
+  // Enviar mensagem para stderr para não interferir com o protocolo
+  process.stderr.write('Iniciando FigmaMind MCP no modo stdio...\n');
+  
+  // Enviar sinal de inicialização bem-sucedida para stderr
+  process.stderr.write('FigmaMind MCP pronto para comunicação STDIO\n');
   
   const rl = readline.createInterface({
     input: process.stdin,
@@ -289,16 +293,22 @@ if (USE_STDIO) {
       // Ignorar linhas vazias
       if (!line.trim()) return;
       
+      // Log da entrada recebida (para stderr para debugging)
+      process.stderr.write(`STDIN received: ${line}\n`);
+      
       // Tentar analisar a entrada como JSON
       const request = JSON.parse(line);
       
       // Processar a solicitação
       const response = await handleJsonRpcRequest(request);
       
+      // Log da resposta para debugging
+      process.stderr.write(`STDOUT sending response for ID ${request.id}\n`);
+      
       // Enviar a resposta
       console.log(JSON.stringify(response));
     } catch (error) {
-      logger.error('Erro ao processar linha de entrada:', error);
+      process.stderr.write(`Erro ao processar linha de entrada: ${error.message}\n`);
       
       // Enviar resposta de erro para qualquer solicitação mal formada
       console.log(JSON.stringify({
@@ -309,7 +319,12 @@ if (USE_STDIO) {
     }
   });
   
-  logger.log('FigmaMind MCP pronto para receber solicitações via stdin/stdout');
+  // Detectar fechamento de stdin para encerrar o programa
+  rl.on('close', () => {
+    process.stderr.write('STDIN fechado, encerrando o servidor\n');
+    process.exit(0);
+  });
+  
 } else {
   // Inicializar app
   const app = express();
