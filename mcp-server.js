@@ -18,6 +18,9 @@ const SUPPRESS_LOGS = process.env.MCP_SUPPRESS_LOGS === 'true';
 const USE_STDIO = process.env.MCP_USE_STDIO === 'true';
 const DEBUG = process.env.MCP_DEBUG === 'true';
 
+// Verificar se o modo de teste foi solicitado
+const TEST_MODE = process.argv.includes('--test');
+
 // Função para logs de debugging
 function debug(...args) {
   if (DEBUG) {
@@ -360,6 +363,63 @@ async function handleJsonRpcRequest(request) {
       id: request?.id || null
     };
   }
+}
+
+// Adicionar no início do código principal, antes da inicialização do servidor
+if (TEST_MODE) {
+  logger.log('Iniciando teste de diagnóstico do servidor MCP...');
+  
+  // Testar se os módulos necessários estão disponíveis
+  try {
+    logger.log('1. Verificando carregamento de módulos essenciais...');
+    const modules = [
+      'express', 'cors', 'fs-extra', 'axios'
+    ];
+    
+    let allModulesOk = true;
+    for (const moduleName of modules) {
+      try {
+        require(moduleName);
+        logger.log(`✓ Módulo ${moduleName}: OK`);
+      } catch (err) {
+        logger.error(`✗ Módulo ${moduleName}: FALHA - ${err.message}`);
+        allModulesOk = false;
+      }
+    }
+    
+    if (!allModulesOk) {
+      logger.error('Alguns módulos estão faltando. Execute: npm install');
+    }
+    
+    // Verificar token do Figma
+    logger.log('\n2. Verificando configuração...');
+    const figmaToken = process.env.FIGMA_TOKEN;
+    if (figmaToken) {
+      logger.log('✓ Token do Figma: CONFIGURADO');
+    } else {
+      logger.error('✗ Token do Figma: NÃO CONFIGURADO');
+      logger.log('  Defina em .env ou como variável de ambiente: FIGMA_TOKEN=seu-token');
+    }
+    
+    // Verificar ferramentas disponíveis
+    logger.log('\n3. Verificando ferramentas disponíveis...');
+    const tools = getAvailableTools();
+    if (tools && tools.length > 0) {
+      logger.log(`✓ Ferramentas disponíveis: ${tools.length}`);
+      tools.forEach(tool => {
+        logger.log(`  - ${tool.name}: ${tool.description}`);
+      });
+    } else {
+      logger.error('✗ Nenhuma ferramenta disponível');
+    }
+    
+    logger.log('\nDiagnóstico concluído. O servidor parece estar configurado corretamente.');
+  } catch (error) {
+    logger.error('Erro durante o diagnóstico:', error);
+  }
+  
+  // Não iniciar o servidor após o diagnóstico
+  process.exit(0);
 }
 
 // Iniciar modo stdio se necessário
