@@ -16,4 +16,4 @@ ENV MCP_SUPPRESS_LOGS=true
 EXPOSE 3000
 
 # Comando para iniciar o serviço
-CMD ["node", "mcp-server.js"] 
+CMD ["node", "build/index.js"] 

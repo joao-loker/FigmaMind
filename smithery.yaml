@@ -4,25 +4,21 @@ startCommand:
   type: stdio
   configSchema:
     # JSON Schema defining the configuration options for the MCP.
-    type: object
-    required:
-      - figmaToken
+    required: ["figmaToken"]
     properties:
       figmaToken:
-        type: string
-        description: Token de acesso à API do Figma
+        type: "string"
+        description: "Seu token de acesso pessoal do Figma"
   commandFunction:
     # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
-    |
-    (config) => ({
-      command: "node",
-      args: ["mcp-server.js"],
-      env: {
-        FIGMA_TOKEN: config.figmaToken,
-        MCP_SUPPRESS_LOGS: "true",
-        MCP_USE_STDIO: "true"
-      }
+    |-
+    (config) => ({ 
+      command: 'node', 
+      args: ['build/index.js'],
+      env: { FIGMA_TOKEN: config.figmaToken }
     })
+  exampleConfig: 
+    figmaToken: "seu-token-figma-aqui"
 
 build:
-  dockerfile: Dockerfile 
+  dockerfile: "Dockerfile"
