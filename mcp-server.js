@@ -274,10 +274,34 @@ async function handleJsonRpcRequest(request) {
 function setupStdio() {
   logInfo('Iniciando servidor MCP via STDIO');
   
+  // Verificar se stdin e stdout estão disponíveis
+  if (!process.stdin.readable) {
+    logError('stdin não está disponível ou não é legível. Isso pode causar problemas de comunicação.');
+  }
+  
+  if (!process.stdout.writable) {
+    logError('stdout não está disponível ou não é gravável. Isso pode causar problemas de comunicação.');
+  }
+  
+  // Configurar para que stdin não termine o processo quando fechado
+  process.stdin.resume();
+  
+  // Desabilitar o término do processo quando stdin fechar
+  process.stdin.on('end', () => {
+    logInfo('Stream stdin encerrado, mas mantendo processo ativo');
+    // Não encerrar o processo, permitir reconexões
+  });
+  
   // Keepalive para manter o processo ativo
   const keepAliveInterval = setInterval(() => {
-    // No-op, apenas para manter o processo ativo
-  }, 10000);
+    // Enviar periodicamente mensagem de keepalive para stderr (não interfere com stdout)
+    if (DEBUG) {
+      process.stderr.write('.');
+    }
+  }, 5000);
+  
+  // Configurar um buffer para lidar com mensagens parciais
+  let messageBuffer = '';
   
   // Usando interface readline para processamento linha a linha
   const rl = readline.createInterface({
@@ -289,6 +313,18 @@ function setupStdio() {
   // Tratamento de erros no stream de entrada
   process.stdin.on('error', (err) => {
     logError(`Erro no stream de entrada: ${err.message}`);
+    // Tentar recuperar o stream se possível
+    try {
+      process.stdin.resume();
+    } catch (e) {
+      logError(`Não foi possível recuperar o stream: ${e.message}`);
+    }
+  });
+  
+  // Tratamento de erros no stream de saída
+  process.stdout.on('error', (err) => {
+    logError(`Erro no stream de saída: ${err.message}`);
+    // Não tentar escrever para stdout após erro
   });
 
   // Handler para cada linha recebida
@@ -297,33 +333,94 @@ function setupStdio() {
     
     try {
       logDebug(`Recebido: ${line}`);
-      const request = JSON.parse(line);
+      
+      // Tentar processar como JSON
+      let request;
+      try {
+        request = JSON.parse(line);
+      } catch (parseError) {
+        // Se falhar o parsing, pode ser parte de uma mensagem maior
+        messageBuffer += line;
+        try {
+          request = JSON.parse(messageBuffer);
+          // Se chegar aqui, o parsing foi bem-sucedido com o buffer
+          messageBuffer = ''; // Limpar buffer
+        } catch (bufferParseError) {
+          // Ainda não é um JSON válido, aguardar mais dados
+          logDebug('Mensagem parcial recebida, aguardando resto...');
+          return;
+        }
+      }
+      
+      // Processar a requisição
       const response = await handleJsonRpcRequest(request);
       
       // Garantir que o stdout seja o único canal de comunicação com o cliente
-      process.stdout.write(JSON.stringify(response) + '\n');
-      logDebug(`Enviado: ${JSON.stringify(response)}`);
+      if (process.stdout.writable) {
+        // Verificar se o stream está aberto antes de escrever
+        process.stdout.write(JSON.stringify(response) + '\n');
+        logDebug(`Enviado: ${JSON.stringify(response)}`);
+      } else {
+        logError('Não foi possível enviar resposta: stdout não está gravável');
+      }
     } catch (err) {
       logError(`Erro ao processar linha: ${err.message}`);
-      // Em caso de erro de parsing, enviar resposta de erro
-      process.stdout.write(JSON.stringify({
-        jsonrpc: "2.0",
-        error: { code: -32700, message: "Erro de parsing" },
-        id: null
-      }) + '\n');
+      // Em caso de erro, tentar enviar resposta de erro se stdout estiver disponível
+      if (process.stdout.writable) {
+        try {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32700, message: "Erro de parsing ou processamento" },
+            id: null
+          }) + '\n');
+        } catch (writeError) {
+          logError(`Erro ao escrever resposta de erro: ${writeError.message}`);
+        }
+      }
     }
   });
 
   // Gerenciar encerramento da conexão
   rl.on('close', () => {
-    logInfo('Conexão STDIO encerrada');
-    clearInterval(keepAliveInterval);
-    // Não encerrar o processo automaticamente para permitir reconexões
-    // process.exit(0);
+    logInfo('Conexão STDIO rl encerrada, mas mantendo processo ativo');
+    // Não limpar o keepAliveInterval para manter o processo vivo
+    
+    // Configurar para reconexão
+    setTimeout(() => {
+      try {
+        // Tentar reiniciar o readline se o processo ainda estiver em execução
+        if (process.stdin.readable) {
+          logInfo('Tentando reiniciar a interface readline...');
+          // Recriar a interface readline
+          const newRl = readline.createInterface({
+            input: process.stdin,
+            output: null,
+            terminal: false
+          });
+          // Anexar os mesmos handlers
+          newRl.on('line', rl.listeners('line')[0]);
+          newRl.on('close', rl.listeners('close')[0]);
+          logInfo('Interface readline reiniciada com sucesso');
+        }
+      } catch (e) {
+        logError(`Erro ao tentar reiniciar readline: ${e.message}`);
+      }
+    }, 1000);
   });
   
   // Manter o processo vivo mesmo se stdin for fechado
   process.stdin.resume();
+  
+  // Lidar com sinais de terminal
+  process.on('SIGTERM', () => {
+    logInfo('Recebido sinal SIGTERM, mas mantendo processo ativo');
+    // Não encerrar o processo automaticamente
+  });
+  
+  process.on('SIGINT', () => {
+    logInfo('Recebido sinal SIGINT, mas mantendo processo ativo');
+    // Não encerrar o processo automaticamente
+  });
 }
 
 // Verificação de módulos e dependências essenciais

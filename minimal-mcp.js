@@ -1,160 +1,124 @@
+#!/usr/bin/env node
+
 /**
  * FigmaMind MCP - Versão ultra minimalista para Cursor
- * Sem dependências externas e sem logs no stdout
+ * Sem dependências externas e com tratamento robusto de conexões
  */
 
+// Configuração para depuração
+const DEBUG = true;
+
+// Módulos nativos
 const readline = require('readline');
 
-// Função para depuração - usa stderr
-function debug(message) {
-  process.stderr.write(`[DEBUG] ${message}\n`);
+// Logs via stderr (não interferem na comunicação STDIO)
+function log(message) {
+  if (DEBUG) console.error(`[DEBUG] ${message}`);
 }
 
-// Definições de ferramentas
-const tools = [
-  {
-    name: "figmamind_transform",
-    description: "Transforma componentes do Figma em formato JSON padronizado",
-    schema: {
-      type: "object",
-      required: ["figmaUrl"],
-      properties: {
-        figmaUrl: {
-          type: "string",
-          description: "URL do arquivo ou frame do Figma para processar"
-        }
-      }
-    }
-  }
-];
+// Inicialização
+log('Iniciando servidor MCP minimalista');
 
-// Mock simples do processador Figma para testes
-async function mockFigmaProcessor(figmaUrl) {
-  // Simula processamento sem dependências externas
-  return {
-    success: true,
-    message: "Processados 10 componentes (simulação)",
-    source: figmaUrl,
-    data: {
-      components: [
-        { id: "mock-button-1", type: "button", name: "Primary Button" },
-        { id: "mock-button-2", type: "button", name: "Secondary Button" }
-      ],
-      meta: {
-        totalComponents: 10,
-        processedAt: new Date().toISOString()
-      }
-    }
-  };
-}
-
-// Função para executar a ferramenta
-async function callTool(name, params) {
-  if (name !== 'figmamind_transform') {
-    throw new Error(`Ferramenta '${name}' não encontrada`);
-  }
-  
-  const { figmaUrl } = params || {};
-  
-  if (!figmaUrl) {
-    throw new Error("Missing figmaUrl parameter");
-  }
-  
-  try {
-    debug(`Processando URL: ${figmaUrl}`);
-    // Usar mock em vez de chamadas reais
-    return await mockFigmaProcessor(figmaUrl);
-  } catch (err) {
-    debug(`Erro: ${err.message}`);
-    throw new Error(err.message || "Erro no processamento");
-  }
-}
-
-// Função para manipular solicitações JSON-RPC
-async function handleJsonRpcRequest(request) {
-  const { id, method, params } = request;
-  
-  try {
-    let result;
-    
-    debug(`Método: ${method}, ID: ${id}`);
-    
-    switch (method) {
-      case 'initialize':
-        // Responder ao método initialize com informações básicas
-        result = {
-          name: "figmamind",
-          version: "1.0.0",
-          description: "MCP server que transforma componentes do Figma em formato JSON padronizado",
-          protocol_version: params?.protocolVersion || "2024-11-05",
-          capabilities: {
-            tools: true
-          }
-        };
-        break;
-        
-      case 'tools/list':
-        // Listar ferramentas disponíveis
-        result = { tools };
-        break;
-        
-      case 'tools/call':
-        // Executar uma ferramenta
-        if (!params || !params.name) {
-          throw new Error("Missing tool name");
-        }
-        
-        result = await callTool(params.name, params.params);
-        break;
-        
-      default:
-        return {
-          jsonrpc: "2.0",
-          error: { 
-            code: -32601, 
-            message: `Method '${method}' not found` 
-          },
-          id
-        };
-    }
-    
-    return {
-      jsonrpc: "2.0",
-      result,
-      id
-    };
-    
-  } catch (err) {
-    debug(`Erro na requisição: ${err.message}`);
-    return {
-      jsonrpc: "2.0",
-      error: { 
-        code: -32603, 
-        message: err.message || "Internal error" 
-      },
-      id
-    };
-  }
-}
-
-// Configurar STDIO
+// Comunicação via STDIO
 const rl = readline.createInterface({
   input: process.stdin,
-  output: null, // Não usar stdout para evitar interferência
+  output: null,
   terminal: false
 });
 
-// Processar linhas de entrada
-rl.on('line', async (line) => {
-  if (!line || !line.trim()) return;
-  
+// Evitar que o processo termine quando stdin fechar
+process.stdin.on('end', () => {
+  log('stdin stream ended, but keeping process alive');
+});
+
+// Tratamento de erros
+process.stdin.on('error', (err) => {
+  log(`Erro no stdin: ${err.message}`);
+});
+
+process.stdout.on('error', (err) => {
+  log(`Erro no stdout: ${err.message}`);
+});
+
+// Handler para cada linha recebida
+rl.on('line', (line) => {
   try {
+    log(`Recebido: ${line}`);
+    
+    if (!line || !line.trim()) return;
+    
+    // Tentar processar como JSON
     const request = JSON.parse(line);
-    const response = await handleJsonRpcRequest(request);
+    const { id, method, params } = request;
+    
+    // Preparar resposta básica
+    let response;
+    
+    if (method === 'initialize') {
+      response = {
+        jsonrpc: "2.0",
+        result: {
+          name: "figmamind-minimal",
+          version: "1.0.0",
+          description: "Minimal MCP server for FigmaMind",
+          protocol_version: params?.protocolVersion || "1.0",
+          capabilities: {
+            tools: true
+          }
+        },
+        id
+      };
+    } else if (method === 'tools/list') {
+      response = {
+        jsonrpc: "2.0",
+        result: {
+          tools: [
+            {
+              name: "figmamind_minimal_test",
+              description: "A test tool for minimal FigmaMind MCP",
+              schema: {
+                type: "object",
+                required: ["message"],
+                properties: {
+                  message: {
+                    type: "string",
+                    description: "Message to echo back"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        id
+      };
+    } else if (method === 'tools/call' && params?.name === 'figmamind_minimal_test') {
+      response = {
+        jsonrpc: "2.0",
+        result: {
+          success: true,
+          message: `Received: ${params.params.message || 'No message provided'}`,
+          timestamp: new Date().toISOString()
+        },
+        id
+      };
+    } else {
+      response = {
+        jsonrpc: "2.0",
+        error: { 
+          code: -32601, 
+          message: `Method '${method}' not supported in minimal MCP` 
+        },
+        id
+      };
+    }
+    
+    // Enviar resposta
     process.stdout.write(JSON.stringify(response) + '\n');
+    log(`Resposta enviada: ${JSON.stringify(response)}`);
   } catch (err) {
-    debug(`Erro na linha: ${err.message}`);
-    // Em caso de erro de parsing, enviar resposta de erro
+    log(`Erro ao processar mensagem: ${err.message}`);
+    
+    // Enviar erro de parsing
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0",
       error: { code: -32700, message: "Parse error" },
@@ -163,17 +127,45 @@ rl.on('line', async (line) => {
   }
 });
 
-// Gerenciar encerramento
+// Configurações para manter o processo vivo
 rl.on('close', () => {
-  debug('Conexão encerrada');
-  process.exit(0);
+  log('readline closed, but keeping process alive');
+  
+  // Tentar recriar o readline após um breve intervalo
+  setTimeout(() => {
+    try {
+      const newRl = readline.createInterface({
+        input: process.stdin,
+        output: null,
+        terminal: false
+      });
+      
+      newRl.on('line', rl.listeners('line')[0]);
+      newRl.on('close', rl.listeners('close')[0]);
+      log('Readline reconnected successfully');
+    } catch (err) {
+      log(`Failed to reconnect readline: ${err.message}`);
+    }
+  }, 1000);
 });
 
-// Capturar erros não tratados
+// Manter stdin aberto
+process.stdin.resume();
+
+// Heartbeat para mostrar que o processo ainda está vivo
+setInterval(() => {
+  log('Heartbeat - process still alive');
+}, 5000);
+
+// Tratamento de erros não capturados
 process.on('uncaughtException', (err) => {
-  debug(`Erro não tratado: ${err.message}`);
-  process.exit(1);
+  log(`Uncaught exception: ${err.message}`);
+  // Não encerrar o processo
 });
 
-// Inicialização concluída
-debug("MCP minimalista iniciado"); 
+process.on('unhandledRejection', (reason) => {
+  log(`Unhandled rejection: ${reason}`);
+  // Não encerrar o processo
+});
+
+log('Minimal MCP server started and waiting for commands...'); 
