@@ -6,63 +6,45 @@ log_debug() {
 }
 
 log_debug "Iniciando script start-with-node20.sh"
-log_debug "Argumentos recebidos: $@"
 
 # Configurações específicas para o MCP
 export MCP_USE_STDIO=true
 export MCP_DEBUG=true
+export NODE_OPTIONS="--no-experimental-fetch"
 
 # Verificar se estamos em um ambiente Docker
 if [ -f "/.dockerenv" ]; then
-  log_debug "Executando em ambiente Docker com Node $(node --version)"
-  # Em ambiente Docker, usar o Node diretamente (já está na versão correta na imagem base)
+  log_debug "Executando em ambiente Docker"
+  # Em ambiente Docker, usar o Node diretamente
   exec node /app/mcp-server.js "$@"
 else
   # Em ambiente local, usar NVM para garantir Node.js 20
   export NVM_DIR="$HOME/.nvm"
   
-  # Verificar se NVM está disponível
   if [ -s "$NVM_DIR/nvm.sh" ]; then
     log_debug "Carregando NVM"
     . "$NVM_DIR/nvm.sh"
     
-    # Tentar usar Node.js 20
-    if nvm use 20; then
-      log_debug "Usando Node.js 20 via NVM: $(node --version)"
-      
-      # Configurar NODE_OPTIONS para desabilitar fetch experimental
-      export NODE_OPTIONS="--no-experimental-fetch"
-      
-      # Para problemas com "client closed", manter stdin aberto
-      log_debug "Iniciando mcp-server.js com Node.js 20"
-      cd "$(dirname "$0")"
-      exec node mcp-server.js "$@"
-    else
-      log_debug "Tentando instalar Node.js 20 via NVM"
-      if nvm install 20; then
-        log_debug "Node.js 20 instalado, agora usando-o: $(node --version)"
-        export NODE_OPTIONS="--no-experimental-fetch"
-        cd "$(dirname "$0")"
-        exec node mcp-server.js "$@"
-      else
-        log_debug "ERRO: Falha ao instalar Node.js 20. Tentando usar o sistema padrão..."
-      fi
+    # Usar Node.js 20
+    log_debug "Configurando para usar Node.js 20"
+    nvm use 20 > /dev/null 2>&1
+    
+    if [ $? -ne 0 ]; then
+      log_debug "Tentando instalar Node.js 20"
+      nvm install 20 > /dev/null 2>&1
+      nvm use 20 > /dev/null 2>&1
     fi
-  else
-    log_debug "NVM não encontrado. Verificando versão do Node do sistema: $(node --version)"
   fi
   
-  # Fallback: usar o Node do sistema se NVM não estiver disponível ou falhar
+  # Verificar a versão do Node
   NODE_VERSION=$(node --version)
-  log_debug "Usando Node do sistema: $NODE_VERSION"
+  log_debug "Usando Node.js versão: $NODE_VERSION"
   
-  # Desabilitar fetch experimental
-  export NODE_OPTIONS="--no-experimental-fetch"
-  
-  # Mudar para o diretório do script para garantir caminhos relativos corretos
+  # Executar o MCP Server com a versão atual do Node
   cd "$(dirname "$0")"
+  log_debug "Diretório atual: $(pwd)"
+  log_debug "Iniciando mcp-server.js"
   
-  # Executar o servidor MCP
-  log_debug "Executando mcp-server.js com Node do sistema"
+  # Executar o servidor com argumentos passados para o script
   exec node mcp-server.js "$@"
 fi 
