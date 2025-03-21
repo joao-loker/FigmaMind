@@ -80,8 +80,16 @@ function extractNodeId(figmaUrl) {
  * @returns {Promise<Object>} Dados do Figma
  */
 async function getFigmaFile(fileKey, nodeId, token) {
+  // Verificação mais robusta do token
   if (!token) {
+    console.error('[ERRO] Token de API do Figma não fornecido');
     throw new Error('Token de API do Figma não fornecido');
+  }
+  
+  // Verificar formato do token
+  if (typeof token !== 'string' || token.length < 30) {
+    console.error(`[ERRO] Token do Figma parece inválido: "${token.substring(0, 10)}..."`);
+    throw new Error('Token do Figma em formato inválido');
   }
   
   try {
@@ -89,15 +97,39 @@ async function getFigmaFile(fileKey, nodeId, token) {
       ? `${FIGMA_API_BASE_URL}/files/${fileKey}/nodes?ids=${nodeId}`
       : `${FIGMA_API_BASE_URL}/files/${fileKey}`;
     
+    console.log(`[INFO] Fazendo requisição para Figma API: ${url}`);
+    console.log(`[INFO] Usando token: ${token.substring(0, 5)}...${token.substring(token.length - 4)}`);
+    
     const response = await axios.get(url, {
       headers: {
         'X-Figma-Token': token
-      }
+      },
+      // Adicionar timeout e configurações mais robustas
+      timeout: 30000, // 30 segundos
+      validateStatus: status => status < 500 // Permitir códigos 4xx para verificar erros de autenticação
     });
     
+    // Verificar se a resposta tem status de erro
+    if (response.status !== 200) {
+      console.error(`[ERRO] Figma API retornou status ${response.status}: ${JSON.stringify(response.data)}`);
+      throw new Error(`Figma API retornou erro: ${response.status} - ${response.data?.message || 'Erro desconhecido'}`);
+    }
+    
+    console.log(`[INFO] Resposta recebida com sucesso da Figma API: ${response.status}`);
     return response.data;
   } catch (error) {
-    console.error('Erro ao buscar arquivo do Figma:', error.message);
+    // Melhorar a mensagem de erro para diagnóstico
+    const errorMsg = error.response 
+      ? `Erro ${error.response.status}: ${JSON.stringify(error.response.data)}`
+      : `Erro de conexão: ${error.message}`;
+    
+    console.error(`[ERRO] Falha ao buscar arquivo do Figma (${fileKey}): ${errorMsg}`);
+    
+    // Erro específico para token inválido
+    if (error.response && error.response.status === 403) {
+      throw new Error(`Token de API do Figma inválido ou com permissões insuficientes: ${error.response.data?.message || 'Acesso negado'}`);
+    }
+    
     throw new Error(`Falha ao buscar dados do Figma: ${error.message}`);
   }
 }
@@ -332,33 +364,48 @@ async function extractComponentAssets(fileKey, component) {
 }
 
 /**
- * Busca e processa um arquivo do Figma a partir da URL
- * @param {string} figmaUrl - URL do Figma
- * @returns {Promise<Object>} Dados do Figma com metadados
+ * Busca os dados do Figma a partir de uma URL
+ * @param {string} url - URL do arquivo do Figma
+ * @returns {Promise<Object>} Dados do Figma + informações relevantes
  */
-async function fetchFigmaFromUrl(figmaUrl) {
-  const token = process.env.FIGMA_TOKEN;
-  
-  if (!token) {
-    throw new Error('Token do Figma não encontrado. Defina a variável de ambiente FIGMA_TOKEN.');
-  }
+async function fetchFigmaFromUrl(url) {
+  console.log(`[INFO] Iniciando fetchFigmaFromUrl para URL: ${url}`);
   
   try {
-    const fileKey = extractFileKey(figmaUrl);
-    const nodeId = extractNodeId(figmaUrl);
+    // Extrair informações da URL
+    const fileKey = extractFileKey(url);
+    const nodeId = extractNodeId(url);
     
-    console.log(`Buscando arquivo do Figma: ${fileKey}${nodeId ? `, nó: ${nodeId}` : ''}`);
+    console.log(`[INFO] FileKey extraído: ${fileKey}`);
+    console.log(`[INFO] NodeId extraído: ${nodeId || 'Nenhum (buscando arquivo completo)'}`);
     
+    // Obter token do ambiente
+    const token = process.env.FIGMA_TOKEN;
+    
+    if (!token) {
+      console.error('[ERRO] FIGMA_TOKEN não encontrado nas variáveis de ambiente');
+      throw new Error('FIGMA_TOKEN não configurado nas variáveis de ambiente');
+    }
+    
+    console.log(`[INFO] FIGMA_TOKEN encontrado nas variáveis de ambiente: ${token.substring(0, 5)}...`);
+    
+    // Buscar dados
+    console.log(`[INFO] Iniciando busca de dados no Figma API...`);
     const figmaData = await getFigmaFile(fileKey, nodeId, token);
     
+    console.log(`[INFO] Dados do Figma recebidos com sucesso`);
+    
+    // Adicionar dados ao resultado
     return {
       data: figmaData,
       fileKey,
       nodeId,
-      url: figmaUrl
+      url,
+      status: 'success'
     };
   } catch (error) {
-    console.error('Erro ao buscar dados do Figma:', error.message);
+    console.error(`[ERRO] Falha ao buscar dados do Figma: ${error.message}`);
+    console.error(`[ERRO] Stack trace: ${error.stack}`);
     throw error;
   }
 }

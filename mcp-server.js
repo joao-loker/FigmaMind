@@ -24,6 +24,26 @@ const TEST_MODE = process.argv.includes('--test');
 // Modo de compatibilidade para Smithery
 const SMITHERY_COMPAT = process.env.SMITHERY_COMPAT === 'true';
 
+// Verificar se o token do Figma foi fornecido via argumentos de linha de comando
+const args = process.argv.slice(2);
+let configIndex = args.indexOf('--config');
+let configJson = null;
+
+// Tentar extrair token do Figma de argumentos de linha de comando
+if (configIndex !== -1 && args.length > configIndex + 1) {
+  try {
+    configJson = JSON.parse(args[configIndex + 1]);
+    if (configJson.figmaToken) {
+      process.env.FIGMA_TOKEN = configJson.figmaToken;
+      if (DEBUG) {
+        process.stderr.write(`[DEBUG] Configurado token do Figma via argumento de linha de comando\n`);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`[ERROR] Erro ao processar argumento de configuração: ${error.message}\n`);
+  }
+}
+
 // Função para logs de debugging
 function debug(...args) {
   if (DEBUG) {
@@ -119,21 +139,32 @@ async function callTool(name, params) {
       const { figmaUrl } = params || {};
       
       if (!figmaUrl) {
+        debug(`Erro: figmaUrl não fornecida`);
         throw new Error("Missing figmaUrl parameter");
       }
       
       // Verificar token do Figma
       if (!process.env.FIGMA_TOKEN) {
+        debug(`Erro: FIGMA_TOKEN não configurado no ambiente`);
         throw new Error("FIGMA_TOKEN não configurado");
+      } else {
+        debug(`FIGMA_TOKEN encontrado: ${process.env.FIGMA_TOKEN.substring(0, 5)}...`);
       }
       
       try {
         // Buscar dados do Figma
         debug(`Iniciando processamento de ${figmaUrl}`);
+        debug(`Usando token para autenticação no Figma API`);
         const figmaResult = await figmaService.fetchFigmaFromUrl(figmaUrl);
         
+        debug(`Resposta recebida do Figma API: ${figmaResult ? 'OK' : 'Falha'}`);
+        debug(`Status response: ${figmaResult.status}`);
+        
         // Processar dados
+        debug(`Iniciando processamento dos dados recebidos`);
         const processed = await processData(figmaResult.data, figmaResult.fileKey);
+        
+        debug(`Processamento concluído com sucesso: ${processed ? 'OK' : 'Falha'}`);
         
         return {
           success: true,
@@ -143,10 +174,12 @@ async function callTool(name, params) {
         };
       } catch (error) {
         debug(`Erro ao executar transformação: ${error.message}`);
+        logger.error(`Stack de erro completo: ${error.stack}`);
         throw new Error(error.message || "Erro no processamento do Figma");
       }
     
     default:
+      debug(`Ferramenta não encontrada: ${name}`);
       throw new Error(`Ferramenta '${name}' não encontrada`);
   }
 }
@@ -461,22 +494,9 @@ if (TEST_MODE) {
   process.exit(0);
 }
 
-// Iniciar modo stdio se necessário
+// Executando em modo STDIO
 if (USE_STDIO) {
-  logger.log('Iniciando protocolo MCP em modo STDIO...');
-  debug('MCP_USE_STDIO=true, usando protocolo JSON-RPC via STDIO');
-  
-  // Garantir que o buffer seja recebido corretamente
-  process.stdin.setEncoding('utf8');
-  
-  // Aumentar o buffer para mensagens grandes
-  if (process.stdin.setRawMode) {
-    try {
-      process.stdin.setRawMode(true);
-    } catch (e) {
-      debug('Aviso: Não foi possível definir o modo raw para stdin:', e.message);
-    }
-  }
+  debug('Iniciando servidor em modo STDIO');
   
   const rl = readline.createInterface({
     input: process.stdin,
@@ -484,69 +504,135 @@ if (USE_STDIO) {
     terminal: false
   });
   
-  // Log de inicialização do servidor para debug
-  debug('Servidor STDIO inicializado e aguardando comandos...');
+  let buffer = '';
+  let contentLength = null;
+  
+  // Adicionar tratamento de erros no readline
+  rl.on('error', (error) => {
+    process.stderr.write(`[ERROR] Erro no readline: ${error.message}\n`);
+  });
   
   rl.on('line', async (line) => {
-    if (!line.trim()) {
-      // Ignorar linhas vazias
-      return;
-    }
-    
     try {
-      debug(`Recebido comando STDIO: ${line.substr(0, 100)}${line.length > 100 ? '...' : ''}`);
-      const request = JSON.parse(line);
+      debug(`STDIO linha recebida: ${line.slice(0, 50)}...`);
       
-      if (!request.id) {
-        debug('Aviso: Requisição sem ID recebida');
-        return;
-      }
-      
-      // Processar a requisição
-      const response = await processRequest(request);
-      
-      // Enviar a resposta
-      const responseText = JSON.stringify(response);
-      debug(`Enviando resposta STDIO: ${responseText.substr(0, 100)}${responseText.length > 100 ? '...' : ''}`);
-      
-      process.stdout.write(responseText + '\n');
-    } catch (error) {
-      logger.error('Erro processando comando STDIO:', error);
-      
-      // Tentar responder com erro se tiver um ID
-      try {
-        const errorId = (line && JSON.parse(line).id) || 'unknown-id';
-        const errorResponse = {
-          jsonrpc: '2.0',
-          id: errorId,
-          error: {
-            code: -32000,
-            message: `Erro interno do servidor: ${error.message || 'Erro desconhecido'}`
-          }
-        };
+      // Parser para mensagens no formato "Content-Length: X\r\n\r\n{...}"
+      if (line.startsWith('Content-Length:')) {
+        const lengthMatch = line.match(/Content-Length: (\d+)/);
+        if (lengthMatch) {
+          contentLength = parseInt(lengthMatch[1], 10);
+          debug(`Esperando mensagem de tamanho: ${contentLength}`);
+        }
+      } else if (line.trim() === '' && contentLength !== null) {
+        // Linha vazia após Content-Length indica que a próxima linha é JSON
+        const messagePromise = new Promise((resolve) => {
+          rl.once('line', (jsonLine) => {
+            resolve(jsonLine);
+          });
+        });
         
-        process.stdout.write(JSON.stringify(errorResponse) + '\n');
-      } catch (respondError) {
-        logger.error('Não foi possível enviar resposta de erro:', respondError);
+        const jsonLine = await messagePromise;
+        
+        // Verificar tamanho da mensagem
+        if (jsonLine.length !== contentLength) {
+          debug(`Aviso: tamanho da mensagem (${jsonLine.length}) diferente do esperado (${contentLength})`);
+        }
+        
+        // Processar o JSON
+        try {
+          const request = JSON.parse(jsonLine);
+          debug(`Processando requisição JSON-RPC: ${request.method}`);
+          
+          // Extrair token do Figma do request se disponível
+          if (request.method === 'invokeToolByName' && 
+              request.params && 
+              request.params.parameters && 
+              request.params.parameters.figmaToken) {
+            const token = request.params.parameters.figmaToken;
+            debug(`Extraindo token do Figma da requisição`);
+            process.env.FIGMA_TOKEN = token;
+          }
+          
+          const response = await processRequest(request);
+          
+          // Enviar resposta no formato esperado pelo protocolo JSONRPC
+          const responseStr = JSON.stringify(response);
+          process.stdout.write(`Content-Length: ${responseStr.length}\r\n\r\n${responseStr}`);
+          debug(`Resposta enviada: ${responseStr.slice(0, 50)}...`);
+          
+          // Resetar para próxima mensagem
+          contentLength = null;
+        } catch (error) {
+          debug(`Erro ao processar JSON: ${error.message}`);
+          
+          // Enviar resposta de erro
+          const errorResponse = {
+            jsonrpc: "2.0",
+            error: {
+              code: -32700,
+              message: `Erro de parse: ${error.message}`
+            },
+            id: null
+          };
+          
+          const errorStr = JSON.stringify(errorResponse);
+          process.stdout.write(`Content-Length: ${errorStr.length}\r\n\r\n${errorStr}`);
+          
+          // Resetar para próxima mensagem
+          contentLength = null;
+        }
+      } else if (line.startsWith('{') && contentLength === null) {
+        // Tentar processar linha diretamente como JSON (formato alternativo)
+        try {
+          const request = JSON.parse(line);
+          const response = await processRequest(request);
+          process.stdout.write(JSON.stringify(response) + '\n');
+        } catch (error) {
+          debug(`Erro ao processar linha como JSON: ${error.message}`);
+          process.stdout.write(JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32700, message: `Parse error: ${error.message}` },
+            id: null
+          }) + '\n');
+        }
+      }
+    } catch (error) {
+      process.stderr.write(`[ERROR] Erro ao processar linha: ${error.message}\n`);
+      process.stderr.write(`[ERROR] Stack: ${error.stack}\n`);
+      
+      try {
+        // Tentar enviar resposta de erro mesmo em caso de falha
+        const errorResponse = {
+          jsonrpc: "2.0",
+          error: { code: -32603, message: `Erro interno: ${error.message}` },
+          id: null
+        };
+        const errorStr = JSON.stringify(errorResponse);
+        process.stdout.write(`Content-Length: ${errorStr.length}\r\n\r\n${errorStr}`);
+      } catch (e) {
+        process.stderr.write(`[ERROR] Erro fatal ao enviar resposta de erro: ${e.message}\n`);
       }
     }
   });
   
-  // Tratar encerramento
+  // Adicionar handler para o fim da entrada
   rl.on('close', () => {
-    debug('Conexão STDIO encerrada');
+    debug('STDIO fechado. Encerrando.');
     process.exit(0);
   });
   
-  // Capturar erros de processo para evitar crashes
-  process.on('uncaughtException', (error) => {
-    debug(`Erro não tratado: ${error.message}`);
-    debug(error.stack);
+  // Capturar sinais para encerramento limpo
+  process.on('SIGINT', () => {
+    debug('Recebido SIGINT. Encerrando.');
+    process.exit(0);
   });
   
-  // Enviar um erro para saídas que não sejam STDIO
-  process.stderr.write('[INFO] FigmaMind MCP iniciado em modo STDIO\n');
+  process.on('SIGTERM', () => {
+    debug('Recebido SIGTERM. Encerrando.');
+    process.exit(0);
+  });
 } else {
+  // Iniciando em modo HTTP
   // Inicializar app
   const app = express();
 

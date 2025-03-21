@@ -308,4 +308,48 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo LICENSE para d
 
 ## Autor
 
-João Pereira - [@joao-loker](https://github.com/joao-loker) 
+João Pereira - [@joao-loker](https://github.com/joao-loker)
+
+## Troubleshooting
+
+Aqui estão soluções para problemas comuns que você pode encontrar:
+
+### Erro "Client Closed" no Cursor/Claude Desktop
+
+Se você estiver encontrando o erro "Client Closed" no Cursor quando tenta utilizar o FigmaMind, pode ser devido a um dos seguintes motivos:
+
+1. **Versão do Node.js incompatível**
+   - O FigmaMind funciona melhor com Node.js versão 18.x
+   - Verifique sua versão atual: `node --version`
+   - A versão 23.x pode causar problemas com o protocolo STDIO
+
+2. **Token do Figma inválido ou ausente**
+   - Verifique se o token do Figma está configurado corretamente em todos os lugares necessários:
+     - No arquivo `.env` para execução direta
+     - Na configuração do Smithery quando executado via Smithery
+     - Nas opções de configuração quando executado via Cursor
+
+3. **Problemas de comunicação via STDIO**
+   - Execute o servidor com modo de debug ativado: `node mcp-server.js --debug`
+   - Verifique os logs para identificar onde a comunicação está falhando
+
+4. **Timeout da API do Figma**
+   - Algumas vezes a API do Figma pode levar muito tempo para responder ou ficar temporariamente indisponível
+   - Tente novamente mais tarde ou com um arquivo Figma menos complexo
+
+### Comandos de diagnóstico
+
+Execute estes comandos para diagnosticar problemas:
+
+```bash
+# Testar configuração local do servidor
+node mcp-server.js --test
+
+# Testar comunicação com STDIO
+node mcp-server.js --debug < test-request.json
+
+# Verificar instalação no Smithery
+npx @smithery/cli@latest list
+```
+
+Lembre-se de reiniciar o Cursor após fazer alterações nas configurações para que elas entrem em vigor. 
